@@ -1,0 +1,38 @@
+.split-workspace {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-divider {
+  box-sizing: border-box;
+  width: 12px;
+  border-inline: 1px solid #d6d6d6;
+  background: #eee;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.workspace-divider:hover,
+.workspace-divider:active {
+  background: #ddd;
+}
+
+.workspace-divider:focus-visible {
+  outline: 2px solid #555;
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .workspace-divider {
+    width: 24px;
+  }
+}
