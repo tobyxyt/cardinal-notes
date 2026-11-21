@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react'
 import { importPdf } from './pdfDocument'
 import PdfList from './PdfList'
 import PdfReader from './PdfReader'
+import type { PdfRegion, PdfRegionMode } from './pdfRegion'
 import { listPdfs, readActivePdfId, saveActivePdfId, type PdfFile } from './pdfStorage'
 import './pdf.css'
 
 const PDFS_IMPORTED = 'cardinal-notes:pdfs-imported'
 
-export default function PdfWorkspace() {
+type PdfWorkspaceProps = {
+  selectionMode: PdfRegionMode | null
+  onStartSelection: () => void
+  onCancelSelection: () => void
+  onConfirmRegion: (region: PdfRegion) => void
+}
+
+export default function PdfWorkspace(props: PdfWorkspaceProps) {
   const [files, setFiles] = useState<PdfFile[]>([])
   const [activeId, setActiveId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -89,8 +97,14 @@ export default function PdfWorkspace() {
       {importing ? <p role="status">正在导入 PDF…</p> : notice && <p role="status">{notice}</p>}
       {errors && <p role="alert">{errors}</p>}
       {activeId
-        ? <PdfReader key={activeId} id={activeId} />
+        ? <PdfReader key={activeId} id={activeId} {...props} />
         : !loading && !errors && <p>导入 PDF 后即可阅读。</p>}
+      {!activeId && props.selectionMode && (
+        <div className="pdf-bar">
+          <span role="status">请先导入要引用的 PDF</span>
+          <button type="button" onClick={props.onCancelSelection}>取消选区</button>
+        </div>
+      )}
     </section>
   )
 }

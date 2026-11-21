@@ -1,12 +1,63 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import type { Editor } from 'tldraw'
+import type { PdfRegion } from '../pdf/pdfRegion'
 import { flushSync } from 'react-dom'
 import CardEditor from './CardEditor'
 import CardList from './CardList'
+import { insertPdfRegion } from './PdfRegionShape'
 import { CARD_LIST_KEY, finishDeletion, loadCards, makeCard, saveCards, type Card, type CardListState } from './cardStorage'
 
-export default function CardWorkspace() {
+export type CardWorkspaceActions = {
+  placePdfRegion: (region: PdfRegion, cardId?: string) => void
+}
+
+type CardWorkspaceProps = {
+  ref: Ref<CardWorkspaceActions>
+  onStartPdfRegion: (cardId: string) => void
+  onActiveCardChange: (cardId: string) => void
+}
+
+export default function CardWorkspace({ ref, onStartPdfRegion, onActiveCardChange }: CardWorkspaceProps) {
   const [cards, setCards] = useState(loadCards)
   const activeCard = cards.items.find((card) => card.id === cards.activeId)!
+  const mounted = useRef<{ cardId: string; editor: Editor } | null>(null)
+  const pendingRegions = useRef(new Map<string, PdfRegion[]>())
+
+  useEffect(() => onActiveCardChange(activeCard.id), [activeCard.id, onActiveCardChange])
+
+  function onEditorMount(cardId: string, editor: Editor) {
+    const current = { cardId, editor }
+    mounted.current = current
+    // tldraw ignores history within onMount itself. Insert after mounting so the action is undoable.
+    queueMicrotask(() => {
+      if (mounted.current !== current) return
+      const regions = pendingRegions.current.get(cardId)
+      if (!regions) return
+      pendingRegions.current.delete(cardId)
+      regions.forEach((region) => insertPdfRegion(editor, region))
+    })
+    return () => {
+      if (mounted.current === current) mounted.current = null
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    placePdfRegion(region, cardId) {
+      if (!cardId) {
+        createCard(region)
+        return
+      }
+      if (cards.activeId !== cardId) return
+
+      const current = mounted.current
+      if (current?.cardId === cardId) {
+        insertPdfRegion(current.editor, region)
+      } else {
+        const pending = pendingRegions.current.get(cardId) ?? []
+        pendingRegions.current.set(cardId, [...pending, region])
+      }
+    },
+  }))
 
   useEffect(() => {
     function onStorage(event: StorageEvent) {
@@ -38,9 +89,10 @@ export default function CardWorkspace() {
     })
   }
 
-  function createCard() {
+  function createCard(region?: PdfRegion) {
     updateCards((latest) => {
       const card = makeCard(latest.items)
+      if (region) pendingRegions.current.set(card.id, [region])
       return { ...latest, items: [...latest.items, card], activeId: card.id }
     })
   }
@@ -82,6 +134,7 @@ export default function CardWorkspace() {
       })
 
       // Commit the editor unmount before requesting IndexedDB deletion.
+      pendingRegions.current.delete(card.id)
       flushSync(() => setCards(next))
       return true
     })
@@ -93,12 +146,13 @@ export default function CardWorkspace() {
       <CardList
         items={cards.items}
         activeId={cards.activeId}
-        onCreate={createCard}
+        onCreate={() => createCard()}
+        onStartPdfRegion={() => onStartPdfRegion(activeCard.id)}
         onSelect={selectCard}
         onRename={renameCard}
         onRemove={(card) => void removeCard(card)}
       />
-      <CardEditor card={activeCard} />
+      <CardEditor card={activeCard} onEditorMount={onEditorMount} />
     </div>
   )
 }

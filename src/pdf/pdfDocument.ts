@@ -1,6 +1,6 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
-import { savePdf } from './pdfStorage'
+import { readPdf, savePdf } from './pdfStorage'
 
 GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -15,6 +15,50 @@ export function openPdf(bytes: ArrayBuffer) {
     iccUrl: `${assetUrl}iccs/`,
     disableAutoFetch: true,
   })
+}
+
+type OpenPdf = Awaited<ReturnType<typeof openPdf>['promise']>
+type CachedDocument = { promise: Promise<OpenPdf>; users: number }
+
+const documents = new Map<string, CachedDocument>()
+const MAX_IDLE_DOCUMENTS = 2
+
+async function loadStoredPdf(id: string) {
+  const blob = await readPdf(id)
+  const task = openPdf(await blob.arrayBuffer())
+  try {
+    return await task.promise
+  } catch (error) {
+    await task.destroy().catch(() => undefined)
+    throw error
+  }
+}
+
+export function acquirePdfDocument(id: string) {
+  let entry = documents.get(id)
+  if (!entry) {
+    entry = { promise: loadStoredPdf(id), users: 0 }
+    const created = entry
+    void entry.promise.catch(() => {
+      if (documents.get(id) === created) documents.delete(id)
+    })
+  }
+  const document = entry
+  document.users += 1
+  documents.delete(id)
+  documents.set(id, document)
+
+  return {
+    promise: document.promise,
+    release() {
+      document.users -= 1
+      const idle = [...documents].filter(([, entry]) => entry.users === 0)
+      for (const [oldId, old] of idle.slice(0, -MAX_IDLE_DOCUMENTS)) {
+        documents.delete(oldId)
+        void old.promise.then((pdf) => pdf.loadingTask.destroy()).catch(() => undefined)
+      }
+    },
+  }
 }
 
 export async function importPdf(file: File) {

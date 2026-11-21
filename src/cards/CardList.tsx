@@ -5,18 +5,22 @@ type CardListProps = {
   items: Card[]
   activeId: string
   onCreate: () => void
+  onStartPdfRegion: () => void
   onSelect: (id: string) => void
   onRename: (id: string, title: string) => void
   onRemove: (card: Card) => void
 }
 
-export default function CardList({ items, activeId, onCreate, onSelect, onRename, onRemove }: CardListProps) {
+export default function CardList({
+  items, activeId, onCreate, onStartPdfRegion, onSelect, onRename, onRemove,
+}: CardListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   return (
-    <header style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #ddd' }}>
+    <header style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8, borderBottom: '1px solid #ddd' }}>
       <button type="button" onClick={onCreate} style={{ flexShrink: 0 }}>新建 Card</button>
-      <div role="group" aria-label="Card 列表" style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
+      <button type="button" onClick={onStartPdfRegion}>插入 PDF 选区</button>
+      <div role="group" aria-label="Card 列表" style={{ display: 'flex', flex: '1 1 120px', gap: 4, overflowX: 'auto' }}>
         {items.map((card) => (
           <div key={card.id} style={{ display: 'flex', flexShrink: 0 }}>
             {editingId === card.id ? (

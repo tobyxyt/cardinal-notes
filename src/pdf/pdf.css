@@ -33,6 +33,7 @@
 .pdf-bar button {
   white-space: nowrap;
   min-height: 32px;
+  touch-action: manipulation;
 }
 
 @media (pointer: coarse) {
@@ -66,4 +67,27 @@
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
+}
+
+.pdf-scroll-area {
+  overflow: hidden;
+}
+
+.pdf-scroll[data-selecting],
+.pdf-scroll[data-selecting] .textLayer {
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.pdf-scroll[data-selecting] .textLayer {
+  pointer-events: none;
+}
+
+.pdf-region-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #3182ce;
+  background: #3182ce25;
+  pointer-events: none;
 }

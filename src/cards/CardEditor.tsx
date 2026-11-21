@@ -1,11 +1,22 @@
-import { Tldraw } from 'tldraw'
+import { Tldraw, type Editor } from 'tldraw'
 import 'tldraw/tldraw.css'
 import type { Card } from './cardStorage'
 
-export default function CardEditor({ card }: { card: Card }) {
+import { PdfRegionShapeUtil } from './PdfRegionShape'
+
+const shapeUtils = [PdfRegionShapeUtil]
+
+export default function CardEditor({
+  card, onEditorMount,
+}: { card: Card; onEditorMount: (cardId: string, editor: Editor) => () => void }) {
   return (
     <main style={{ position: 'relative' }}>
-      <Tldraw key={card.id} persistenceKey={card.persistenceKey} />
+      <Tldraw
+        key={card.id}
+        persistenceKey={card.persistenceKey}
+        shapeUtils={shapeUtils}
+        onMount={(editor) => onEditorMount(card.id, editor)}
+      />
     </main>
   )
 }

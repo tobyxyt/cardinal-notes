@@ -1,5 +1,6 @@
-import { lazy, Suspense, useRef, useState, type PointerEvent } from 'react'
-import CardWorkspace from './cards/CardWorkspace'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import CardWorkspace, { type CardWorkspaceActions } from './cards/CardWorkspace'
+import type { PdfRegion } from './pdf/pdfRegion'
 import './App.css'
 
 const PdfWorkspace = lazy(() => import('./pdf/PdfWorkspace'))
@@ -10,8 +11,31 @@ function clampWidth(width: number) {
   return Math.min(MAX_PDF_WIDTH, Math.max(MIN_PDF_WIDTH, width))
 }
 
+type RegionTarget = { mode: 'create' } | { mode: 'insert'; cardId: string }
+
 export default function App() {
   const [pdfWidth, setPdfWidth] = useState(50)
+  const [target, setTarget] = useState<RegionTarget | null>(null)
+  const cards = useRef<CardWorkspaceActions>(null)
+  const onActiveCardChange = useCallback((cardId: string) => {
+    setTarget((current) => current?.mode === 'insert' && current.cardId !== cardId ? null : current)
+  }, [])
+
+  useEffect(() => {
+    if (!target) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setTarget(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [target])
+
+  function confirmRegion(region: PdfRegion) {
+    if (!target) return
+    cards.current?.placePdfRegion(region, target.mode === 'insert' ? target.cardId : undefined)
+    setTarget(null)
+  }
+
   const layout = useRef<HTMLDivElement>(null)
   const grabOffset = useRef(0)
 
@@ -44,7 +68,12 @@ export default function App() {
     >
       <div className="workspace-pane" id="pdf-pane">
         <Suspense fallback={<p role="status">正在加载 PDF 阅读器…</p>}>
-          <PdfWorkspace />
+          <PdfWorkspace
+            selectionMode={target?.mode ?? null}
+            onStartSelection={() => setTarget({ mode: 'create' })}
+            onCancelSelection={() => setTarget(null)}
+            onConfirmRegion={confirmRegion}
+          />
         </Suspense>
       </div>
       <div
@@ -68,7 +97,11 @@ export default function App() {
         }}
       />
       <div className="workspace-pane">
-        <CardWorkspace />
+        <CardWorkspace
+          ref={cards}
+          onStartPdfRegion={(cardId) => setTarget({ mode: 'insert', cardId })}
+          onActiveCardChange={onActiveCardChange}
+        />
       </div>
     </div>
   )
