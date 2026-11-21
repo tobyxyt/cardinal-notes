@@ -1,14 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { importPdf } from './pdfDocument'
+import PdfList from './PdfList'
 import PdfReader from './PdfReader'
-import { listPdfs, type PdfFile } from './pdfStorage'
+import { listPdfs, readActivePdfId, saveActivePdfId, type PdfFile } from './pdfStorage'
 import './pdf.css'
 
-const ACTIVE_PDF = 'cardinal-notes:active-pdf'
 const PDFS_IMPORTED = 'cardinal-notes:pdfs-imported'
 
 export default function PdfWorkspace() {
-  const input = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<PdfFile[]>([])
   const [activeId, setActiveId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -22,7 +21,7 @@ export default function PdfWorkspace() {
       try {
         const library = await listPdfs()
         if (cancelled) return
-        const previous = localStorage.getItem(ACTIVE_PDF)
+        const previous = readActivePdfId()
         setFiles(library)
         setActiveId(library.find(({ id }) => id === previous)?.id ?? library[0]?.id ?? '')
       } catch (error) {
@@ -44,11 +43,7 @@ export default function PdfWorkspace() {
 
   function selectPdf(id: string) {
     setActiveId(id)
-    try {
-      localStorage.setItem(ACTIVE_PDF, id)
-    } catch {
-      // The last selection is optional. The file is already in IndexedDB.
-    }
+    saveActivePdfId(id)
   }
 
   async function importFiles(selected: File[]) {
@@ -84,30 +79,13 @@ export default function PdfWorkspace() {
 
   return (
     <section className="pdf-workspace" aria-label="PDF 阅读">
-      <div className="pdf-bar">
-        <button type="button" disabled={loading || importing} onClick={() => input.current?.click()}>
-          导入 PDF
-        </button>
-        <input
-          ref={input}
-          type="file"
-          accept=".pdf,application/pdf"
-          multiple
-          hidden
-          onChange={(event) => {
-            const selected = Array.from(event.currentTarget.files ?? [])
-            event.currentTarget.value = ''
-            void importFiles(selected)
-          }}
-        />
-        <div className="pdf-file-list" role="group" aria-label="PDF 列表">
-          {files.map(({ id, name }) => (
-            <button key={id} type="button" aria-pressed={id === activeId} onClick={() => selectPdf(id)}>
-              {name}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PdfList
+        files={files}
+        activeId={activeId}
+        importDisabled={loading || importing}
+        onImport={(selected) => void importFiles(selected)}
+        onSelect={selectPdf}
+      />
       {importing ? <p role="status">正在导入 PDF…</p> : notice && <p role="status">{notice}</p>}
       {errors && <p role="alert">{errors}</p>}
       {activeId

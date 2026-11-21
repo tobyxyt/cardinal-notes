@@ -4,6 +4,20 @@ export type PdfFile = {
   hash: string
 }
 
+const ACTIVE_PDF = 'cardinal-notes:active-pdf'
+
+export function readActivePdfId() {
+  return localStorage.getItem(ACTIVE_PDF)
+}
+
+export function saveActivePdfId(id: string) {
+  try {
+    localStorage.setItem(ACTIVE_PDF, id)
+  } catch {
+    // The last selection is optional. The file is already in IndexedDB.
+  }
+}
+
 const DATABASE = 'cardinal-notes:pdfs'
 let connection: Promise<IDBDatabase> | undefined
 
