@@ -7,6 +7,10 @@ const DOCUMENT_PREFIX = 'TLDRAW_DOCUMENT_v2'
 const LEGACY_ASSET_PREFIX = 'TLDRAW_ASSET_STORE_v1'
 const DB_INDEX_KEY = 'TLDRAW_DB_NAME_INDEX_v2'
 
+export function canvasDatabaseName(persistenceKey: string) {
+  return DOCUMENT_PREFIX + persistenceKey
+}
+
 function deleteDatabase(name: string) {
   return new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(name)
@@ -20,7 +24,7 @@ export async function deleteCanvas(persistenceKey: string) {
   // before deleting. IndexedDB waits for connections and transactions to close.
   const connections: Iterable<{ pending(): Promise<void> }> = LocalIndexedDb.connectedInstances
   await Promise.all(Array.from(connections, (db) => db.pending()))
-  const documentName = DOCUMENT_PREFIX + persistenceKey
+  const documentName = canvasDatabaseName(persistenceKey)
   await Promise.all([
     deleteDatabase(documentName),
     deleteDatabase(LEGACY_ASSET_PREFIX + persistenceKey),

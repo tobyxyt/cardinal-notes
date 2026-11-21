@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import CardWorkspace, { type CardWorkspaceActions } from './cards/CardWorkspace'
-import type { PdfRegion } from './pdf/pdfRegion'
+import type { PdfRegion, PdfRegionReference } from './pdf/pdfRegion'
 import './App.css'
 
 const PdfWorkspace = lazy(() => import('./pdf/PdfWorkspace'))
@@ -16,6 +16,8 @@ type RegionTarget = { mode: 'create' } | { mode: 'insert'; cardId: string }
 export default function App() {
   const [pdfWidth, setPdfWidth] = useState(50)
   const [target, setTarget] = useState<RegionTarget | null>(null)
+  const [destination, setDestination] = useState<PdfRegion | null>(null)
+  const [references, setReferences] = useState<PdfRegionReference[]>([])
   const cards = useRef<CardWorkspaceActions>(null)
   const onActiveCardChange = useCallback((cardId: string) => {
     setTarget((current) => current?.mode === 'insert' && current.cardId !== cardId ? null : current)
@@ -29,6 +31,13 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [target])
+
+  function openPdfSource(region: PdfRegion) {
+    setTarget(null)
+    setDestination({ ...region })
+  }
+
+  const cancelPdfJump = useCallback(() => setDestination(null), [])
 
   function confirmRegion(region: PdfRegion) {
     if (!target) return
@@ -73,6 +82,10 @@ export default function App() {
             onStartSelection={() => setTarget({ mode: 'create' })}
             onCancelSelection={() => setTarget(null)}
             onConfirmRegion={confirmRegion}
+            references={references}
+            sourceRequest={destination}
+            onCancelSourceRequest={cancelPdfJump}
+            onOpenCard={(cardId) => cards.current?.openCard(cardId)}
           />
         </Suspense>
       </div>
@@ -101,6 +114,8 @@ export default function App() {
           ref={cards}
           onStartPdfRegion={(cardId) => setTarget({ mode: 'insert', cardId })}
           onActiveCardChange={onActiveCardChange}
+          onOpenPdfSource={openPdfSource}
+          onReferencesChange={setReferences}
         />
       </div>
     </div>

@@ -91,3 +91,70 @@
   background: #3182ce25;
   pointer-events: none;
 }
+
+.pdf-history-mark,
+.pdf-jump-highlight {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.pdf-history-mark {
+  z-index: 1;
+  border: 1px solid #3263a483;
+  background: #3263a410;
+}
+
+.pdf-history-open {
+  position: absolute;
+  top: 0;
+  right: 0;
+  pointer-events: auto;
+  touch-action: manipulation;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #6381a8;
+  border-radius: 3px;
+  background: #f7fbff;
+  color: #274f82;
+  line-height: 1;
+}
+
+@media (pointer: coarse) {
+  .pdf-history-open {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+.pdf-region-outline,
+.pdf-jump-highlight {
+  z-index: 2;
+}
+
+.pdf-jump-highlight {
+  border: 2px solid #b45a00;
+  background: #ffbb3740;
+}
+
+.pdf-history-choices {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  max-height: 70%;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #6381a8;
+  border-radius: 4px;
+  background: white;
+}
+
+.pdf-history-choices button {
+  touch-action: manipulation;
+}

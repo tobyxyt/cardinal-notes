@@ -1,33 +1,41 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import type { Editor } from 'tldraw'
-import type { PdfRegion } from '../pdf/pdfRegion'
+import type { PdfRegion, PdfRegionReference } from '../pdf/pdfRegion'
 import { flushSync } from 'react-dom'
 import CardEditor from './CardEditor'
 import CardList from './CardList'
 import { insertPdfRegion } from './PdfRegionShape'
+import { useCardPdfReferences } from './useCardPdfReferences'
 import { CARD_LIST_KEY, finishDeletion, loadCards, makeCard, saveCards, type Card, type CardListState } from './cardStorage'
 
 export type CardWorkspaceActions = {
   placePdfRegion: (region: PdfRegion, cardId?: string) => void
+  openCard: (cardId: string) => void
 }
 
 type CardWorkspaceProps = {
   ref: Ref<CardWorkspaceActions>
   onStartPdfRegion: (cardId: string) => void
   onActiveCardChange: (cardId: string) => void
+  onOpenPdfSource: (region: PdfRegion) => void
+  onReferencesChange: (references: PdfRegionReference[]) => void
 }
 
-export default function CardWorkspace({ ref, onStartPdfRegion, onActiveCardChange }: CardWorkspaceProps) {
+export default function CardWorkspace({
+  ref, onStartPdfRegion, onActiveCardChange, onOpenPdfSource, onReferencesChange,
+}: CardWorkspaceProps) {
   const [cards, setCards] = useState(loadCards)
   const activeCard = cards.items.find((card) => card.id === cards.activeId)!
   const mounted = useRef<{ cardId: string; editor: Editor } | null>(null)
   const pendingRegions = useRef(new Map<string, PdfRegion[]>())
+  const watchReferences = useCardPdfReferences(cards.items, onReferencesChange)
 
   useEffect(() => onActiveCardChange(activeCard.id), [activeCard.id, onActiveCardChange])
 
   function onEditorMount(cardId: string, editor: Editor) {
     const current = { cardId, editor }
     mounted.current = current
+    const unwatch = watchReferences(cardId, editor)
     // tldraw ignores history within onMount itself. Insert after mounting so the action is undoable.
     queueMicrotask(() => {
       if (mounted.current !== current) return
@@ -37,11 +45,13 @@ export default function CardWorkspace({ ref, onStartPdfRegion, onActiveCardChang
       regions.forEach((region) => insertPdfRegion(editor, region))
     })
     return () => {
+      unwatch()
       if (mounted.current === current) mounted.current = null
     }
   }
 
   useImperativeHandle(ref, () => ({
+    openCard: selectCard,
     placePdfRegion(region, cardId) {
       if (!cardId) {
         createCard(region)
@@ -152,7 +162,7 @@ export default function CardWorkspace({ ref, onStartPdfRegion, onActiveCardChang
         onRename={renameCard}
         onRemove={(card) => void removeCard(card)}
       />
-      <CardEditor card={activeCard} onEditorMount={onEditorMount} />
+      <CardEditor card={activeCard} onEditorMount={onEditorMount} onOpenPdfSource={onOpenPdfSource} />
     </div>
   )
 }

@@ -15,3 +15,9 @@ export function regionSize(region: PdfRegion) {
   const height = region.yMax - region.yMin
   return region.rotation % 180 === 0 ? { width, height } : { width: height, height: width }
 }
+
+export type PdfRegionReference = {
+  cardId: string
+  cardTitle: string
+  region: PdfRegion
+}

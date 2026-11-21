@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { importPdf } from './pdfDocument'
+import { useEffect, useMemo, useState } from 'react'
+import { acquirePdfDocument, importPdf } from './pdfDocument'
 import PdfList from './PdfList'
 import PdfReader from './PdfReader'
-import type { PdfRegion, PdfRegionMode } from './pdfRegion'
-import { listPdfs, readActivePdfId, saveActivePdfId, type PdfFile } from './pdfStorage'
+import type { PdfRegion, PdfRegionMode, PdfRegionReference } from './pdfRegion'
+import { listPdfs, readActivePdfId, readPdf, saveActivePdfId, type PdfFile } from './pdfStorage'
 import './pdf.css'
 
 const PDFS_IMPORTED = 'cardinal-notes:pdfs-imported'
@@ -13,6 +13,10 @@ type PdfWorkspaceProps = {
   onStartSelection: () => void
   onCancelSelection: () => void
   onConfirmRegion: (region: PdfRegion) => void
+  references: PdfRegionReference[]
+  sourceRequest: PdfRegion | null
+  onCancelSourceRequest: () => void
+  onOpenCard: (cardId: string) => void
 }
 
 export default function PdfWorkspace(props: PdfWorkspaceProps) {
@@ -22,6 +26,11 @@ export default function PdfWorkspace(props: PdfWorkspaceProps) {
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState('')
   const [errors, setErrors] = useState('')
+  const [sourceError, setSourceError] = useState('')
+  const [destination, setDestination] = useState<PdfRegion | null>(null)
+  const { sourceRequest } = props
+  const references = useMemo(() => props.references.filter(({ region }) => region.pdfId === activeId),
+    [props.references, activeId])
 
   useEffect(() => {
     let cancelled = false
@@ -49,7 +58,45 @@ export default function PdfWorkspace(props: PdfWorkspaceProps) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!sourceRequest || loading) return
+    const region = sourceRequest
+    let cancelled = false
+    setDestination(null)
+    setSourceError('')
+
+    async function openSource() {
+      try {
+        // Check for a deleted source even when PDF.js still has it in memory.
+        await readPdf(region.pdfId)
+        if (cancelled) return
+        const source = acquirePdfDocument(region.pdfId)
+        try {
+          const pdf = await source.promise
+          if (cancelled) return
+          if (region.pageNumber < 1 || region.pageNumber > pdf.numPages) {
+            setSourceError('源 PDF 中找不到该选区的页码。')
+            return
+          }
+          setActiveId(region.pdfId)
+          saveActivePdfId(region.pdfId)
+          setDestination(region)
+        } finally {
+          source.release()
+        }
+      } catch {
+        if (!cancelled) setSourceError('源 PDF 已移除或无法读取。')
+      }
+    }
+
+    void openSource()
+    return () => { cancelled = true }
+  }, [loading, sourceRequest])
+
   function selectPdf(id: string) {
+    props.onCancelSourceRequest()
+    setDestination(null)
+    setSourceError('')
     setActiveId(id)
     saveActivePdfId(id)
   }
@@ -96,8 +143,9 @@ export default function PdfWorkspace(props: PdfWorkspaceProps) {
       />
       {importing ? <p role="status">正在导入 PDF…</p> : notice && <p role="status">{notice}</p>}
       {errors && <p role="alert">{errors}</p>}
+      {sourceError && <p role="alert">{sourceError}</p>}
       {activeId
-        ? <PdfReader key={activeId} id={activeId} {...props} />
+        ? <PdfReader key={activeId} id={activeId} {...props} references={references} destination={destination} />
         : !loading && !errors && <p>导入 PDF 后即可阅读。</p>}
       {!activeId && props.selectionMode && (
         <div className="pdf-bar">

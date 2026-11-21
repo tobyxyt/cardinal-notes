@@ -3,7 +3,8 @@ import { AnnotationEditorType, AnnotationMode } from 'pdfjs-dist/legacy/build/pd
 import { EventBus, PDFViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
 import 'pdfjs-dist/legacy/web/pdf_viewer.css'
 import { acquirePdfDocument } from './pdfDocument'
-import type { PdfRegion, PdfRegionMode } from './pdfRegion'
+import type { PdfRegion, PdfRegionMode, PdfRegionReference } from './pdfRegion'
+import PdfRegionMarks from './PdfRegionMarks'
 import { usePdfRegionSelection } from './usePdfRegionSelection'
 
 type PdfReaderProps = {
@@ -12,6 +13,9 @@ type PdfReaderProps = {
   onStartSelection: () => void
   onCancelSelection: () => void
   onConfirmRegion: (region: PdfRegion) => void
+  references: PdfRegionReference[]
+  destination: PdfRegion | null
+  onOpenCard: (cardId: string) => void
 }
 
 function tapAction(event: PointerEvent<HTMLButtonElement>, action: () => void) {
@@ -23,7 +27,7 @@ function tapAction(event: PointerEvent<HTMLButtonElement>, action: () => void) {
 }
 
 export default function PdfReader({
-  id, selectionMode, onStartSelection, onCancelSelection, onConfirmRegion,
+  id, selectionMode, onStartSelection, onCancelSelection, onConfirmRegion, references, destination, onOpenCard,
 }: PdfReaderProps) {
   const container = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<PDFViewer | null>(null)
@@ -151,6 +155,15 @@ export default function PdfReader({
         >
           <div className="pdfViewer" />
         </div>
+        <PdfRegionMarks
+          references={references}
+          destination={destination}
+          ready={scale !== null}
+          selecting={selectionMode !== null}
+          surfaceRef={container}
+          viewerRef={viewerRef}
+          onOpenCard={onOpenCard}
+        />
         {outline && <div className="pdf-region-outline" style={outline} aria-hidden="true" />}
       </div>
     </div>
