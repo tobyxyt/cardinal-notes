@@ -1,6 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type Dispatch, type PointerEvent, type ReactNode, type RefObject, type SetStateAction } from 'react'
 import CardWorkspace, { type CardWorkspaceActions } from './cards/CardWorkspace'
 import type { PdfRegion, PdfRegionReference } from './pdf/pdfRegion'
+import BackupControls from './backup/BackupControls'
+import { ACTIVE_DATASET_KEY, readActiveDataset, WORKSPACE_LOCK, workspaceDataset } from './dataset'
 import './App.css'
 
 const PdfWorkspace = lazy(() => import('./pdf/PdfWorkspace'))
@@ -13,12 +15,17 @@ function clampWidth(width: number) {
 
 type RegionTarget = { mode: 'create' } | { mode: 'insert'; cardId: string }
 
-export default function App() {
-  const [pdfWidth, setPdfWidth] = useState(50)
+function Workspace({
+  cards, onPdfImportingChange, pdfWidth, setPdfWidth,
+}: {
+  cards: RefObject<CardWorkspaceActions | null>
+  onPdfImportingChange: (pending: boolean) => void
+  pdfWidth: number
+  setPdfWidth: Dispatch<SetStateAction<number>>
+}) {
   const [target, setTarget] = useState<RegionTarget | null>(null)
   const [destination, setDestination] = useState<PdfRegion | null>(null)
   const [references, setReferences] = useState<PdfRegionReference[]>([])
-  const cards = useRef<CardWorkspaceActions>(null)
   const onActiveCardChange = useCallback((cardId: string) => {
     setTarget((current) => current?.mode === 'insert' && current.cardId !== cardId ? null : current)
   }, [])
@@ -86,6 +93,7 @@ export default function App() {
             sourceRequest={destination}
             onCancelSourceRequest={cancelPdfJump}
             onOpenCard={(cardId) => cards.current?.openCard(cardId)}
+            onImportingChange={onPdfImportingChange}
           />
         </Suspense>
       </div>
@@ -117,6 +125,73 @@ export default function App() {
           onOpenPdfSource={openPdfSource}
           onReferencesChange={setReferences}
         />
+      </div>
+    </div>
+  )
+}
+
+function WorkspaceLease({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    let release: (() => void) | undefined
+    const controller = new AbortController()
+    void navigator.locks.request(WORKSPACE_LOCK, { mode: 'shared', signal: controller.signal }, async () => {
+      if (cancelled) return
+      if (readActiveDataset() !== workspaceDataset) {
+        window.location.reload()
+        return
+      }
+      await new Promise<void>((resolve) => {
+        release = resolve
+        setReady(true)
+      })
+    }).catch((error) => {
+      if (!cancelled) console.error('Could not open workspace', error)
+    })
+    return () => {
+      cancelled = true
+      controller.abort()
+      release?.()
+    }
+  }, [])
+  return ready ? children : <p role="status">正在打开本地工作区…</p>
+}
+
+export default function App() {
+  const cards = useRef<CardWorkspaceActions>(null)
+  const [busy, setBusy] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [importingPdf, setImportingPdf] = useState(false)
+  const [pdfWidth, setPdfWidth] = useState(50)
+
+  useEffect(() => {
+    function reloadDataset(event: StorageEvent) {
+      if (event.key === ACTIVE_DATASET_KEY && readActiveDataset() !== workspaceDataset) window.location.reload()
+    }
+    window.addEventListener('storage', reloadDataset)
+    return () => window.removeEventListener('storage', reloadDataset)
+  }, [])
+
+  return (
+    <div className="app-shell">
+      <BackupControls
+        disabled={importingPdf}
+        captureCanvas={() => cards.current?.captureCanvas() ?? null}
+        setBusy={setBusy}
+        setPaused={setPaused}
+      />
+      <div className="app-workspace" inert={busy}>
+        {!paused && (
+          <WorkspaceLease>
+            <Workspace
+              cards={cards}
+              onPdfImportingChange={setImportingPdf}
+              pdfWidth={pdfWidth}
+              setPdfWidth={setPdfWidth}
+            />
+          </WorkspaceLease>
+        )}
       </div>
     </div>
   )

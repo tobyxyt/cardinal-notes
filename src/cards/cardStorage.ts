@@ -1,3 +1,4 @@
+import { datasetKey, workspaceDataset } from '../dataset'
 import { deleteCanvas } from './deleteCanvas'
 
 export type Card = {
@@ -17,13 +18,13 @@ type OldCardList = {
   activeId: string
 }
 
-export const CARD_LIST_KEY = 'cardinal-notes:cards'
+export const CARD_LIST_KEY = datasetKey('cards')
 
 export function makeCard(items: Card[]): Card {
   const id = crypto.randomUUID()
   let number = items.length + 1
   while (items.some((card) => card.title === `Card ${number}`)) number += 1
-  return { id, title: `Card ${number}`, persistenceKey: `cardinal-notes:card:${id}` }
+  return { id, title: `Card ${number}`, persistenceKey: datasetKey(`card:${id}`) }
 }
 
 export function saveCards(cards: CardListState) {
@@ -49,7 +50,8 @@ export function loadCards(): CardListState {
   }
 
   // New installs use the original key so single-card installs keep their canvas.
-  const card = { ...makeCard([]), persistenceKey: 'cardinal-notes' }
+  const first = makeCard([])
+  const card = workspaceDataset ? first : { ...first, persistenceKey: 'cardinal-notes' }
   return saveCards({ items: [card], activeId: card.id, pendingDeletes: [] })
 }
 

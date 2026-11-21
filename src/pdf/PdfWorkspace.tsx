@@ -17,6 +17,7 @@ type PdfWorkspaceProps = {
   sourceRequest: PdfRegion | null
   onCancelSourceRequest: () => void
   onOpenCard: (cardId: string) => void
+  onImportingChange: (importing: boolean) => void
 }
 
 export default function PdfWorkspace(props: PdfWorkspaceProps) {
@@ -104,6 +105,7 @@ export default function PdfWorkspace(props: PdfWorkspaceProps) {
   async function importFiles(selected: File[]) {
     if (!selected.length) return
     setImporting(true)
+    props.onImportingChange(true)
     setNotice('')
     setErrors('')
     let lastImportedId = ''
@@ -130,6 +132,7 @@ export default function PdfWorkspace(props: PdfWorkspaceProps) {
     if (duplicates) setNotice(`${duplicates} 份内容相同的 PDF 已在列表中。`)
     if (failures.length) setErrors(failures.join(' '))
     setImporting(false)
+    props.onImportingChange(false)
   }
 
   return (

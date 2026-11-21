@@ -61,6 +61,12 @@ export function acquirePdfDocument(id: string) {
   }
 }
 
+export async function pdfHash(bytes: ArrayBuffer) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')
+}
+
 export async function importPdf(file: File) {
   let bytes: ArrayBuffer
   try {
@@ -69,9 +75,7 @@ export async function importPdf(file: File) {
     throw new Error('无法读取本地文件。')
   }
 
-  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  ).join('')
+  const hash = await pdfHash(bytes)
   // PDF.js can transfer the byte buffer to its worker. Save a Blob copy first.
   const blob = new Blob([bytes], { type: 'application/pdf' })
   const task = openPdf(bytes)

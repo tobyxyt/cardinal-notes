@@ -19,6 +19,15 @@ function deleteDatabase(name: string) {
   })
 }
 
+export async function waitForCanvasSaves() {
+  // A tldraw connection leaves this set only after its shutdown writes have completed.
+  const deadline = Date.now() + 10_000
+  while (LocalIndexedDb.connectedInstances.size) {
+    if (Date.now() >= deadline) throw new Error('画布保存尚未完成，请稍后重试。')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+}
+
 export async function deleteCanvas(persistenceKey: string) {
   // An unmounted editor can still be opening its DB. Wait for those opens
   // before deleting. IndexedDB waits for connections and transactions to close.

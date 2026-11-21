@@ -1,5 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import type { Editor } from 'tldraw'
+import type { LiveCanvas } from '../backup/canvasBackup'
 import type { PdfRegion, PdfRegionReference } from '../pdf/pdfRegion'
 import { flushSync } from 'react-dom'
 import CardEditor from './CardEditor'
@@ -11,6 +12,7 @@ import { CARD_LIST_KEY, finishDeletion, loadCards, makeCard, saveCards, type Car
 export type CardWorkspaceActions = {
   placePdfRegion: (region: PdfRegion, cardId?: string) => void
   openCard: (cardId: string) => void
+  captureCanvas: () => LiveCanvas | null
 }
 
 type CardWorkspaceProps = {
@@ -52,6 +54,12 @@ export default function CardWorkspace({
 
   useImperativeHandle(ref, () => ({
     openCard: selectCard,
+    captureCanvas() {
+      const current = mounted.current
+      if (current?.cardId !== activeCard.id) return null
+      current.editor.complete()
+      return { persistenceKey: activeCard.persistenceKey, document: current.editor.store.getStoreSnapshot() }
+    },
     placePdfRegion(region, cardId) {
       if (!cardId) {
         createCard(region)

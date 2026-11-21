@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor, TLRecord } from 'tldraw'
+import { datasetKey } from '../dataset'
 import type { PdfRegion, PdfRegionReference } from '../pdf/pdfRegion'
 import type { Card } from './cardStorage'
 import { canvasDatabaseName } from './deleteCanvas'
@@ -54,7 +55,7 @@ export function useCardPdfReferences(items: Card[], report: (references: PdfRegi
   const channel = useRef<BroadcastChannel | null>(null)
 
   useEffect(() => {
-    const connection = new BroadcastChannel('cardinal-notes:pdf-region-changes')
+    const connection = new BroadcastChannel(datasetKey('pdf-region-changes'))
     channel.current = connection
     connection.onmessage = ({ data }: MessageEvent<{ cardId: string; regions: PdfRegion[] }>) => {
       const { cardId, regions } = data

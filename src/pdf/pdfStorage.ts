@@ -1,10 +1,12 @@
+import { datasetKey } from '../dataset'
+
 export type PdfFile = {
   id: string
   name: string
   hash: string
 }
 
-const ACTIVE_PDF = 'cardinal-notes:active-pdf'
+const ACTIVE_PDF = datasetKey('active-pdf')
 
 export function readActivePdfId() {
   return localStorage.getItem(ACTIVE_PDF)
@@ -18,32 +20,57 @@ export function saveActivePdfId(id: string) {
   }
 }
 
-const DATABASE = 'cardinal-notes:pdfs'
+export function pdfDatabaseName(dataset?: string) {
+  return datasetKey('pdfs', dataset)
+}
+
 let connection: Promise<IDBDatabase> | undefined
 
-function openDatabase() {
-  connection ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DATABASE, 1)
+function connectDatabase(name: string) {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(name, 1)
     request.onupgradeneeded = () => {
       const metadata = request.result.createObjectStore('metadata', { keyPath: 'id' })
       metadata.createIndex('hash', 'hash', { unique: true })
       request.result.createObjectStore('files')
     }
-    request.onsuccess = () => {
-      const db = request.result
-      db.onversionchange = () => {
-        db.close()
-        connection = undefined
-      }
-      db.onclose = () => { connection = undefined }
-      resolve(db)
-    }
+    request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
+  })
+}
+
+function openDatabase() {
+  connection ??= connectDatabase(pdfDatabaseName()).then((db) => {
+    db.onversionchange = () => {
+      db.close()
+      connection = undefined
+    }
+    db.onclose = () => { connection = undefined }
+    return db
   }).catch((error) => {
     connection = undefined
     throw error
   })
   return connection
+}
+
+export async function writeRestoredPdfs(dataset: string, entries: { file: PdfFile; blob: Blob }[]) {
+  const db = await connectDatabase(pdfDatabaseName(dataset))
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(['metadata', 'files'], 'readwrite')
+      const metadata = transaction.objectStore('metadata')
+      const files = transaction.objectStore('files')
+      transaction.oncomplete = () => resolve()
+      transaction.onabort = () => reject(transaction.error ?? new Error('PDF 恢复写入已中断。'))
+      for (const { file, blob } of entries) {
+        metadata.add(file)
+        files.add(blob, file.id)
+      }
+    })
+  } finally {
+    db.close()
+  }
 }
 
 function requestResult<T>(request: IDBRequest<T>) {
