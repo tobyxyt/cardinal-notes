@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Tldraw } from 'tldraw'
 import 'tldraw/tldraw.css'
@@ -57,7 +57,7 @@ function loadCards(): CardList {
   return saveCards({ items: [card], activeId: card.id, pendingDeletes: [] })
 }
 
-const initialCards = loadCards()
+const PdfWorkspace = lazy(() => import('./pdf/PdfWorkspace'))
 const deletingCanvases = new Set<string>()
 
 async function finishDeletion(persistenceKey: string) {
@@ -82,8 +82,8 @@ async function finishDeletion(persistenceKey: string) {
   }
 }
 
-export default function App() {
-  const [cards, setCards] = useState(initialCards)
+function CardWorkspace() {
+  const [cards, setCards] = useState(loadCards)
   const [editingId, setEditingId] = useState<string | null>(null)
   const activeCard = cards.items.find((card) => card.id === cards.activeId)!
 
@@ -169,7 +169,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)' }}>
+    <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)' }}>
       <header style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #ddd' }}>
         <button type="button" onClick={createCard} style={{ flexShrink: 0 }}>新建 Card</button>
         <div role="group" aria-label="Card 列表" style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
@@ -209,6 +209,42 @@ export default function App() {
       <main style={{ position: 'relative' }}>
         <Tldraw key={activeCard.id} persistenceKey={activeCard.persistenceKey} />
       </main>
+    </div>
+  )
+}
+
+
+export default function App() {
+  const [workspace, setWorkspace] = useState<'cards' | 'pdf'>(() =>
+    localStorage.getItem('cardinal-notes:workspace') === 'pdf' ? 'pdf' : 'cards',
+  )
+
+  function selectWorkspace(next: 'cards' | 'pdf') {
+    setWorkspace(next)
+    try {
+      localStorage.setItem('cardinal-notes:workspace', next)
+    } catch {
+      // The view preference is optional.
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)' }}>
+      <nav aria-label="工作区" style={{ display: 'flex', gap: 4, padding: 8, borderBottom: '1px solid #ddd' }}>
+        <button type="button" aria-pressed={workspace === 'cards'} onClick={() => selectWorkspace('cards')}>
+          Card 编辑
+        </button>
+        <button type="button" aria-pressed={workspace === 'pdf'} onClick={() => selectWorkspace('pdf')}>
+          PDF 阅读
+        </button>
+      </nav>
+      <div style={{ minWidth: 0, minHeight: 0 }}>
+        {workspace === 'cards' ? <CardWorkspace /> : (
+          <Suspense fallback={<p role="status">正在加载 PDF 阅读器…</p>}>
+            <PdfWorkspace />
+          </Suspense>
+        )}
+      </div>
     </div>
   )
 }
