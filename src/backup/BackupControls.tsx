@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { CARD_LIST_KEY } from '../cards/cardStorage'
-import { waitForCanvasSaves } from '../cards/deleteCanvas'
+import { verifySavedCanvas, waitForCanvasSaves, type LiveCanvas } from '../cards/canvasPersistence'
 import { readActiveDataset, WORKSPACE_LOCK, workspaceDataset } from '../dataset'
-import type { LiveCanvas } from './canvasBackup'
 
 const RESTORED = 'cardinal-notes:restore-completed'
 
@@ -43,7 +42,6 @@ export default function BackupControls({ disabled, captureCanvas, setBusy, setPa
       }
       const live = captureCanvas()
       if (!live) throw new Error('当前画布还未准备好，请稍后重试。')
-      const { verifySavedCanvas } = await import('./canvasBackup')
       await verifySavedCanvas(live)
 
       flushSync(() => setPaused(true))

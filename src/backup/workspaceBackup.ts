@@ -1,12 +1,11 @@
 import { BlobReader, BlobWriter, TextReader, ZipReader, ZipWriter, type FileEntry } from '@zip.js/zip.js'
 import { createTLStore, defaultAssetUtils, defaultBindingUtils, defaultShapeUtils } from 'tldraw'
 import { loadCards, type CardListState } from '../cards/cardStorage'
-import { canvasDatabaseName } from '../cards/deleteCanvas'
 import { PdfRegionShapeUtil } from '../cards/PdfRegionShape'
 import { ACTIVE_DATASET_KEY, datasetKey, readActiveDataset, workspaceDataset } from '../dataset'
 import { openPdf, pdfHash } from '../pdf/pdfDocument'
-import { listPdfs, pdfDatabaseName, readActivePdfId, readPdf, writeRestoredPdfs, type PdfFile } from '../pdf/pdfStorage'
-import { matchesLiveCanvas, readCanvas, removeStagedDatabase, writeCanvas, type CanvasData, type LiveCanvas } from './canvasBackup'
+import { listPdfs, readActivePdfId, readPdf, removeStagedPdfs, writeRestoredPdfs, type PdfFile } from '../pdf/pdfStorage'
+import { matchesLiveCanvas, readCanvas, removeStagedCanvas, writeCanvas, type CanvasData, type LiveCanvas } from '../cards/canvasPersistence'
 
 const FORMAT = 'cardinal-notes-backup'
 const VERSION = 1
@@ -343,10 +342,9 @@ export async function restoreWorkspace({ manifest, canvases, pdfs }: ValidatedBa
     for (const card of cards.items) {
       const canvas = canvases.get(card.id)
       if (!canvas) continue
-      created.push(canvasDatabaseName(card.persistenceKey))
+      created.push(card.persistenceKey)
       await writeCanvas(card.persistenceKey, canvas)
     }
-    created.push(pdfDatabaseName(dataset))
     await writeRestoredPdfs(dataset, pdfs)
     localStorage.setItem(cardsKey, JSON.stringify(cards))
     if (manifest.activePdfId) localStorage.setItem(pdfKey, manifest.activePdfId)
@@ -355,7 +353,7 @@ export async function restoreWorkspace({ manifest, canvases, pdfs }: ValidatedBa
   } catch (error) {
     localStorage.removeItem(cardsKey)
     localStorage.removeItem(pdfKey)
-    await Promise.all(created.map(removeStagedDatabase))
+    await Promise.all([...created.map(removeStagedCanvas), removeStagedPdfs(dataset)])
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       throw new Error('浏览器存储空间不足，恢复未切换，当前数据仍可使用。')
     }

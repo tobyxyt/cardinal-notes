@@ -54,6 +54,13 @@ function openDatabase() {
   return connection
 }
 
+export function removeStagedPdfs(dataset: string) {
+  return new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(pdfDatabaseName(dataset))
+    request.onsuccess = request.onerror = request.onblocked = () => resolve()
+  })
+}
+
 export async function writeRestoredPdfs(dataset: string, entries: { file: PdfFile; blob: Blob }[]) {
   const db = await connectDatabase(pdfDatabaseName(dataset))
   try {

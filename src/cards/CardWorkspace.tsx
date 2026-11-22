@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
-import type { Editor } from 'tldraw'
-import type { LiveCanvas } from '../backup/canvasBackup'
+import { getSnapshot, type Editor } from 'tldraw'
+import type { LiveCanvas } from './canvasPersistence'
 import type { PdfRegion, PdfRegionReference } from '../pdf/pdfRegion'
 import { flushSync } from 'react-dom'
 import CardEditor from './CardEditor'
@@ -30,14 +30,14 @@ export default function CardWorkspace({
   const activeCard = cards.items.find((card) => card.id === cards.activeId)!
   const mounted = useRef<{ cardId: string; editor: Editor } | null>(null)
   const pendingRegions = useRef(new Map<string, PdfRegion[]>())
-  const watchReferences = useCardPdfReferences(cards.items, onReferencesChange)
+  const { watchReferences, hasUnknownReferences } = useCardPdfReferences(cards.items, onReferencesChange)
 
   useEffect(() => onActiveCardChange(activeCard.id), [activeCard.id, onActiveCardChange])
 
   function onEditorMount(cardId: string, editor: Editor) {
     const current = { cardId, editor }
     mounted.current = current
-    const unwatch = watchReferences(cardId, editor)
+    const unwatch = watchReferences(cardId, editor.store)
     // tldraw ignores history within onMount itself. Insert after mounting so the action is undoable.
     queueMicrotask(() => {
       if (mounted.current !== current) return
@@ -58,7 +58,7 @@ export default function CardWorkspace({
       const current = mounted.current
       if (current?.cardId !== activeCard.id) return null
       current.editor.complete()
-      return { persistenceKey: activeCard.persistenceKey, document: current.editor.store.getStoreSnapshot() }
+      return { persistenceKey: activeCard.persistenceKey, document: getSnapshot(current.editor.store).document }
     },
     placePdfRegion(region, cardId) {
       if (!cardId) {
@@ -162,6 +162,7 @@ export default function CardWorkspace({
   return (
     <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)' }}>
       <CardList
+        hasUnknownReferences={hasUnknownReferences}
         items={cards.items}
         activeId={cards.activeId}
         onCreate={() => createCard()}
@@ -170,7 +171,12 @@ export default function CardWorkspace({
         onRename={renameCard}
         onRemove={(card) => void removeCard(card)}
       />
-      <CardEditor card={activeCard} onEditorMount={onEditorMount} onOpenPdfSource={onOpenPdfSource} />
+      <CardEditor
+        key={activeCard.persistenceKey}
+        card={activeCard}
+        onEditorMount={onEditorMount}
+        onOpenPdfSource={onOpenPdfSource}
+      />
     </div>
   )
 }

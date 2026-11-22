@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import {
   DefaultContextMenu, DefaultContextMenuContent, Tldraw, TldrawUiMenuGroup, TldrawUiMenuItem,
   useEditor, useValue, type Editor, type TLUiContextMenuProps,
@@ -6,6 +6,7 @@ import {
 import 'tldraw/tldraw.css'
 import type { PdfRegion } from '../pdf/pdfRegion'
 import type { Card } from './cardStorage'
+import { allowReferenceWrites } from './pdfReferenceIndex'
 import { PdfRegionShapeUtil } from './PdfRegionShape'
 
 const shapeUtils = [PdfRegionShapeUtil]
@@ -48,11 +49,16 @@ export default function CardEditor({
   onEditorMount: (cardId: string, editor: Editor) => () => void
   onOpenPdfSource: (region: PdfRegion) => void
 }) {
+  const { persistenceKey } = card
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  useEffect(() => allowReferenceWrites(persistenceKey, () => setState('ready'), () => setState('failed')), [persistenceKey])
+  if (state === 'failed') return <p role="alert">本地画布无法打开，请刷新后重试。</p>
+  if (state === 'loading') return <p role="status">正在打开画布…</p>
+
   return (
     <main style={{ position: 'relative' }}>
       <OpenPdfSource.Provider value={onOpenPdfSource}>
         <Tldraw
-          key={card.id}
           persistenceKey={card.persistenceKey}
           components={components}
           shapeUtils={shapeUtils}

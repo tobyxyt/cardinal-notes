@@ -1,5 +1,6 @@
 import { datasetKey, workspaceDataset } from '../dataset'
-import { deleteCanvas } from './deleteCanvas'
+import { deleteCanvas } from './canvasPersistence'
+import { forgetReferenceIndex } from './pdfReferenceIndex'
 
 export type Card = {
   id: string
@@ -62,6 +63,7 @@ export async function finishDeletion(persistenceKey: string) {
   deletingCanvases.add(persistenceKey)
   try {
     await deleteCanvas(persistenceKey)
+    forgetReferenceIndex(persistenceKey)
     await navigator.locks.request(CARD_LIST_KEY, () => {
       const cards = loadCards()
       if (cards.pendingDeletes.includes(persistenceKey)) {

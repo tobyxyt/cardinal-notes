@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Card } from './cardStorage'
 
 type CardListProps = {
+  hasUnknownReferences: boolean
   items: Card[]
   activeId: string
   onCreate: () => void
@@ -12,7 +13,7 @@ type CardListProps = {
 }
 
 export default function CardList({
-  items, activeId, onCreate, onStartPdfRegion, onSelect, onRename, onRemove,
+  hasUnknownReferences, items, activeId, onCreate, onStartPdfRegion, onSelect, onRename, onRemove,
 }: CardListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -56,6 +57,7 @@ export default function CardList({
           </div>
         ))}
       </div>
+      {hasUnknownReferences && <small role="status">部分 PDF 引用尚未确认。</small>}
     </header>
   )
 }
