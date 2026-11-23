@@ -46,15 +46,16 @@ function InlineStyle<T extends string>({ style, styles, label, labels, preview }
       {style.values.map((option) => (
         <button type="button" className="card-style-option" key={option} aria-label={label + '：' + labels[option]}
           title={label + '：' + labels[option]} aria-pressed={value.type === 'shared' && value.value === option}
-          onClick={(event) => {
+          onClick={() => {
             if (value.type === 'shared' && value.value === option) return
             editor.markHistoryStoppingPoint('Card style')
             editor.run(() => {
-              if (editor.isIn('select')) editor.setStyleForSelectedShapes(style, option)
-              if (!(editor.getSelectedShapeIds().length && (event.metaKey || event.ctrlKey))) {
+              if (editor.isIn('select')) {
+                editor.setStyleForSelectedShapes(style, option)
+                if (style.id === DefaultSizeStyle.id) kickoutOccludedShapes(editor, editor.getSelectedShapeIds())
+              } else {
                 editor.setStyleForNextShapes(style, option)
               }
-              if (style.id === DefaultSizeStyle.id) kickoutOccludedShapes(editor, editor.getSelectedShapeIds())
             })
           }}>{preview(option)}</button>
       ))}
@@ -81,7 +82,7 @@ function OpacityControl() {
           const value = event.currentTarget.valueAsNumber / 100
           editor.run(() => {
             if (editor.isIn('select')) editor.setOpacityForSelectedShapes(value)
-            editor.setOpacityForNextShapes(value)
+            else editor.setOpacityForNextShapes(value)
           })
         }} />
       <output aria-hidden="true">{opacity.type === 'mixed' ? '—' : percentage + '%'}</output>
@@ -109,43 +110,45 @@ export default function CardStyleDock() {
   return (
     <div className="card-style-dock" role="group" aria-label="Card 样式">
       {styles.get(DefaultColorStyle) && (
-        <CardColorPalette selected={styles.getAsKnownValue(DefaultColorStyle)} onSelect={(value, selectionOnly) => {
+        <CardColorPalette selected={styles.getAsKnownValue(DefaultColorStyle)} onSelect={(value) => {
           editor.markHistoryStoppingPoint('Card color')
           editor.run(() => {
             if (editor.isIn('select')) editor.setStyleForSelectedShapes(DefaultColorStyle, value)
-            if (!(selectionOnly && editor.getSelectedShapeIds().length)) editor.setStyleForNextShapes(DefaultColorStyle, value)
+            else editor.setStyleForNextShapes(DefaultColorStyle, value)
           })
         }} />
       )}
       <InlineStyle style={DefaultSizeStyle} styles={styles} label={isText ? '字号' : '粗细'}
         labels={isText ? { s: '小', m: '中', l: '大', xl: '特大' } : sizeLabels}
         preview={(size) => <LinePreview weight={{ s: 1, m: 2.2, l: 3.8, xl: 5.4 }[size]} />} />
-      <InlineStyle style={DefaultDashStyle} styles={styles} label="线型" labels={dashLabels} preview={(dash) => <LinePreview dash={dash} />} />
-      <InlineStyle style={DefaultFontStyle} styles={styles} label="字体" labels={fontLabels}
-        preview={(font) => <TldrawUiButtonIcon icon={'font-' + font} />} />
-      <InlineStyle style={DefaultFillStyle} styles={styles} label="填充" labels={fillLabels}
-        preview={(fill) => <TldrawUiButtonIcon icon={'fill-' + fill} />} />
-      <InlineStyle style={DefaultTextAlignStyle} styles={styles} label="文字对齐" labels={textAlignLabels}
-        preview={(align) => <TldrawUiButtonIcon icon={{ start: 'text-align-left', middle: 'text-align-center', end: 'text-align-right' }[align]} />} />
-      <InlineStyle style={ArrowShapeKindStyle} styles={styles} label="箭头路径" labels={{ arc: '曲线', elbow: '折线' }}
-        preview={(kind) => <TldrawUiButtonIcon icon={'arrow-' + kind} />} />
-      <InlineStyle style={LineShapeSplineStyle} styles={styles} label="路径" labels={{ line: '直线', cubic: '曲线' }}
-        preview={(kind) => <TldrawUiButtonIcon icon={kind === 'line' ? 'spline-line' : 'spline-cubic'} />} />
-      <OpacityControl />
-      {needsGeometryOptions && (
-        <TldrawUiPopover id="card-geometry-options">
-          <TldrawUiPopoverTrigger>
-            <button type="button" className="card-style-option" aria-label="形状细节" title="形状细节" {...triggerEvents}>
-              <TldrawUiButtonIcon icon="dots-horizontal" small />
-            </button>
-          </TldrawUiPopoverTrigger>
-          <TldrawUiPopoverContent side="top" align="end" alignOffset={alignOffset} collisionPadding={8}>
-            <DefaultStylePanel styles={styles} isMobile>
-              <StylePanelSection><StylePanelLabelAlignPicker /><StylePanelGeoShapePicker /><StylePanelArrowheadPicker /></StylePanelSection>
-            </DefaultStylePanel>
-          </TldrawUiPopoverContent>
-        </TldrawUiPopover>
-      )}
+      <TldrawUiPopover id="card-more-styles">
+        <TldrawUiPopoverTrigger>
+          <button type="button" className="card-style-option card-more-style-button" aria-label="更多样式" title="更多样式" {...triggerEvents}>
+            <TldrawUiButtonIcon icon="dots-horizontal" small />
+          </button>
+        </TldrawUiPopoverTrigger>
+        <TldrawUiPopoverContent side="top" align="end" alignOffset={alignOffset} collisionPadding={8}>
+          <div className="card-more-styles" role="group" aria-label="更多样式">
+            <InlineStyle style={DefaultDashStyle} styles={styles} label="线型" labels={dashLabels} preview={(dash) => <LinePreview dash={dash} />} />
+            <InlineStyle style={DefaultFontStyle} styles={styles} label="字体" labels={fontLabels}
+              preview={(font) => <TldrawUiButtonIcon icon={'font-' + font} />} />
+            <InlineStyle style={DefaultFillStyle} styles={styles} label="填充" labels={fillLabels}
+              preview={(fill) => <TldrawUiButtonIcon icon={'fill-' + fill} />} />
+            <InlineStyle style={DefaultTextAlignStyle} styles={styles} label="文字对齐" labels={textAlignLabels}
+              preview={(align) => <TldrawUiButtonIcon icon={{ start: 'text-align-left', middle: 'text-align-center', end: 'text-align-right' }[align]} />} />
+            <InlineStyle style={ArrowShapeKindStyle} styles={styles} label="箭头路径" labels={{ arc: '曲线', elbow: '折线' }}
+              preview={(kind) => <TldrawUiButtonIcon icon={'arrow-' + kind} />} />
+            <InlineStyle style={LineShapeSplineStyle} styles={styles} label="路径" labels={{ line: '直线', cubic: '曲线' }}
+              preview={(kind) => <TldrawUiButtonIcon icon={kind === 'line' ? 'spline-line' : 'spline-cubic'} />} />
+            <OpacityControl />
+            {needsGeometryOptions && (
+              <DefaultStylePanel styles={styles} isMobile>
+                <StylePanelSection><StylePanelLabelAlignPicker /><StylePanelGeoShapePicker /><StylePanelArrowheadPicker /></StylePanelSection>
+              </DefaultStylePanel>
+            )}
+          </div>
+        </TldrawUiPopoverContent>
+      </TldrawUiPopover>
     </div>
   )
 }

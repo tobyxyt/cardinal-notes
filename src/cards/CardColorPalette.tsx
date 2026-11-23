@@ -32,7 +32,7 @@ function moveColor(colors: Color[], from: Color, to: Color) {
 
 export default function CardColorPalette({ selected, onSelect }: {
   selected: Color | undefined
-  onSelect: (color: Color, selectionOnly: boolean) => void
+  onSelect: (color: Color) => void
 }) {
   const editor = useEditor()
   const { alignOffset, triggerEvents } = useCardPopupAlignment()
@@ -79,7 +79,7 @@ export default function CardColorPalette({ selected, onSelect }: {
     } else if (event.pointerType === 'touch') {
       // A browser can suppress the synthetic click on the first tap after a drag.
       suppressClick.current = true
-      if (target === current.color) onSelect(current.color, false)
+      if (target === current.color) onSelect(current.color)
     }
   }
 
@@ -108,7 +108,7 @@ export default function CardColorPalette({ selected, onSelect }: {
           }}
           onClick={(event) => {
             if (event.detail && suppressClick.current) return
-            onSelect(color, event.ctrlKey || event.metaKey)
+            onSelect(color)
           }}>{swatch(color)}</button>
       ))}
       <TldrawUiPopover id="card-all-colors">
@@ -126,7 +126,7 @@ export default function CardColorPalette({ selected, onSelect }: {
                 return (
                   <div className="card-color-cell" key={color}>
                     <button type="button" className="card-style-option" aria-label={names[color]} title={names[color]}
-                      aria-pressed={selected === color} onClick={(event) => onSelect(color, event.ctrlKey || event.metaKey)}>
+                      aria-pressed={selected === color} onClick={() => onSelect(color)}>
                       {swatch(color)}
                     </button>
                     <button type="button" className="card-color-favorite-toggle"

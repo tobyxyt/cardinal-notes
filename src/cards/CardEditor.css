@@ -160,3 +160,18 @@
   .card-more-grid .card-extra-tool { min-height: 48px; }
   .card-extra-tool-label { display: block; max-width: 100%; font-size: 9px; line-height: 1.1; text-align: center; white-space: normal; }
 }
+
+.card-more-styles {
+  box-sizing: border-box;
+  width: min(248px, calc(100cqi - 16px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  color: var(--ink);
+  background: var(--surface);
+  --card-style-target: 30px;
+}
+.card-more-style-button { background: var(--chrome); }
+@media (pointer: coarse) { .card-more-styles { --card-style-target: 36px; } }

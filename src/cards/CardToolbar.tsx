@@ -8,8 +8,8 @@ import {
 import CardStyleDock from './CardStyleDock'
 import { useCardPopupAlignment } from './useCardPopupAlignment'
 
-const primaryTools = ['select', 'hand', 'draw', 'eraser', 'text', 'highlight', 'rectangle', 'ellipse']
-const secondaryTools = ['arrow', 'line', 'note', 'asset', 'frame']
+const primaryTools = ['select', 'hand', 'draw', 'eraser', 'text', 'highlight', 'rectangle', 'ellipse', 'arrow']
+const secondaryTools = ['line', 'note', 'asset', 'frame']
 
 function MoreTools() {
   const editor = useEditor()

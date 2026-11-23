@@ -8,6 +8,7 @@ import 'tldraw/tldraw.css'
 import type { PdfRegion } from '../pdf/pdfRegion'
 import type { Card } from './cardStorage'
 import CardToolbar from './CardToolbar'
+import { watchCardToolPresets, withCardToolDragPreset } from './cardToolPresets'
 import './CardEditor.css'
 import { allowReferenceWrites } from './pdfReferenceIndex'
 import { PdfRegionShapeUtil } from './PdfRegionShape'
@@ -61,6 +62,9 @@ const components: TLUiComponents = {
 }
 
 const overrides: TLUiOverrides = {
+  tools(editor, tools) {
+    return Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, withCardToolDragPreset(editor, tool)]))
+  },
   actions(editor, actions) {
     delete actions['change-page-prev']
     delete actions['change-page-next']
@@ -103,7 +107,11 @@ export default function CardEditor({
           components={components}
           overrides={overrides}
           shapeUtils={shapeUtils}
-          onMount={(editor) => onEditorMount(card.id, editor)}
+          onMount={(editor) => {
+            const stopPresets = watchCardToolPresets(editor)
+            const unmount = onEditorMount(card.id, editor)
+            return () => { stopPresets(); unmount() }
+          }}
         />
       </OpenPdfSource.Provider>
     </main>
