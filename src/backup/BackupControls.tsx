@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { CARD_LIST_KEY } from '../cards/cardStorage'
 import { verifySavedCanvas, waitForCanvasSaves, type LiveCanvas } from '../cards/canvasPersistence'
+import WorkspaceIcon from '../WorkspaceIcon'
 import { readActiveDataset, WORKSPACE_LOCK, workspaceDataset } from '../dataset'
 
 const RESTORED = 'cardinal-notes:restore-completed'
@@ -15,6 +16,7 @@ type Props = {
 
 export default function BackupControls({ disabled, captureCanvas, setBusy, setPaused }: Props) {
   const input = useRef<HTMLInputElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
   const [progress, setProgress] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -89,8 +91,18 @@ export default function BackupControls({ disabled, captureCanvas, setBusy, setPa
 
   return (
     <div className="backup-bar" aria-label="数据备份">
-      <button type="button" disabled={disabled || !!progress} onClick={() => void run()}>导出备份</button>
-      <button type="button" disabled={disabled || !!progress} onClick={() => input.current?.click()}>导入备份</button>
+      <button type="button" className="tool-button more-button" aria-label="更多操作" title="更多操作"
+        popoverTarget="workspace-actions" disabled={disabled || !!progress}>
+        <WorkspaceIcon name="more" />
+      </button>
+      <div className="workspace-menu" id="workspace-actions" ref={menu} popover="auto" role="group" aria-label="备份操作">
+        <button type="button" onClick={() => { menu.current?.hidePopover(); input.current?.click() }}>
+          <WorkspaceIcon name="import" /> 导入备份
+        </button>
+        <button type="button" onClick={() => { menu.current?.hidePopover(); void run() }}>
+          <WorkspaceIcon name="export" /> 导出备份
+        </button>
+      </div>
       <input
         ref={input}
         type="file"
@@ -103,9 +115,17 @@ export default function BackupControls({ disabled, captureCanvas, setBusy, setPa
           if (file) void run(file)
         }}
       />
-      {progress && <span role="status">{progress}</span>}
-      {message && <span role="status">{message}</span>}
-      {error && <span role="alert">{error}</span>}
+      {(progress || message || error) && (
+        <div className="backup-feedback">
+          <span role={error ? 'alert' : 'status'}>{error || progress || message}</span>
+          {!progress && (
+            <button type="button" className="tool-button" aria-label="关闭通知" title="关闭通知"
+              onClick={() => { setMessage(''); setError('') }}>
+              <WorkspaceIcon name="close" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

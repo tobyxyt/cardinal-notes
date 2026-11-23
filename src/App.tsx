@@ -1,27 +1,22 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type Dispatch, type PointerEvent, type ReactNode, type RefObject, type SetStateAction } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import CardWorkspace, { type CardWorkspaceActions } from './cards/CardWorkspace'
 import type { PdfRegion, PdfRegionReference } from './pdf/pdfRegion'
 import BackupControls from './backup/BackupControls'
 import { ACTIVE_DATASET_KEY, readActiveDataset, WORKSPACE_LOCK, workspaceDataset } from './dataset'
+import WorkspaceLayout, { loadLayout, saveLayout, viewModes, type Layout } from './WorkspaceLayout'
+import WorkspaceIcon from './WorkspaceIcon'
 import './App.css'
 
 const PdfWorkspace = lazy(() => import('./pdf/PdfWorkspace'))
-const MIN_PDF_WIDTH = 20
-const MAX_PDF_WIDTH = 80
-
-function clampWidth(width: number) {
-  return Math.min(MAX_PDF_WIDTH, Math.max(MIN_PDF_WIDTH, width))
-}
-
 type RegionTarget = { mode: 'create' } | { mode: 'insert'; cardId: string }
 
 function Workspace({
-  cards, onPdfImportingChange, pdfWidth, setPdfWidth,
+  cards, onPdfImportingChange, layout, onLayoutChange,
 }: {
   cards: RefObject<CardWorkspaceActions | null>
   onPdfImportingChange: (pending: boolean) => void
-  pdfWidth: number
-  setPdfWidth: Dispatch<SetStateAction<number>>
+  layout: Layout
+  onLayoutChange: (layout: Layout) => void
 }) {
   const [target, setTarget] = useState<RegionTarget | null>(null)
   const [destination, setDestination] = useState<PdfRegion | null>(null)
@@ -39,7 +34,12 @@ function Workspace({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [target])
 
+  function revealPane(pane: 'pdf' | 'card') {
+    if (layout.mode !== 'split' && layout.mode !== pane) onLayoutChange({ ...layout, mode: 'split' })
+  }
+
   function openPdfSource(region: PdfRegion) {
+    revealPane('pdf')
     setTarget(null)
     setDestination({ ...region })
   }
@@ -48,42 +48,17 @@ function Workspace({
 
   function confirmRegion(region: PdfRegion) {
     if (!target) return
+    revealPane('card')
     cards.current?.placePdfRegion(region, target.mode === 'insert' ? target.cardId : undefined)
     setTarget(null)
   }
 
-  const layout = useRef<HTMLDivElement>(null)
-  const grabOffset = useRef(0)
-
-  function startResize(event: PointerEvent<HTMLDivElement>) {
-    if (!event.isPrimary || event.button !== 0) return
-
-    const divider = event.currentTarget
-    grabOffset.current = event.clientX - divider.getBoundingClientRect().left
-    divider.setPointerCapture(event.pointerId)
-    event.preventDefault()
-  }
-
-  function resize(event: PointerEvent<HTMLDivElement>) {
-    const divider = event.currentTarget
-    if (!divider.hasPointerCapture(event.pointerId)) return
-
-    const bounds = layout.current!.getBoundingClientRect()
-    const paneWidth = bounds.width - divider.offsetWidth
-    if (paneWidth <= 0) return
-
-    const width = event.clientX - bounds.left - grabOffset.current
-    setPdfWidth(clampWidth((width / paneWidth) * 100))
-  }
-
   return (
-    <div
-      className="split-workspace"
-      ref={layout}
-      style={{ gridTemplateColumns: `minmax(0, ${pdfWidth}fr) auto minmax(0, ${100 - pdfWidth}fr)` }}
-    >
-      <div className="workspace-pane" id="pdf-pane">
-        <Suspense fallback={<p role="status">正在加载 PDF 阅读器…</p>}>
+    <WorkspaceLayout
+      layout={layout}
+      onChange={onLayoutChange}
+      pdf={(
+        <Suspense fallback={<p className="workspace-notice" role="status">正在加载 PDF 阅读器…</p>}>
           <PdfWorkspace
             selectionMode={target?.mode ?? null}
             onStartSelection={() => setTarget({ mode: 'create' })}
@@ -92,41 +67,27 @@ function Workspace({
             references={references}
             sourceRequest={destination}
             onCancelSourceRequest={cancelPdfJump}
-            onOpenCard={(cardId) => cards.current?.openCard(cardId)}
+            onOpenCard={(cardId) => {
+              revealPane('card')
+              cards.current?.openCard(cardId)
+            }}
             onImportingChange={onPdfImportingChange}
           />
         </Suspense>
-      </div>
-      <div
-        className="workspace-divider"
-        role="separator"
-        tabIndex={0}
-        aria-label="调整 PDF 和 Card 栏宽"
-        aria-orientation="vertical"
-        aria-controls="pdf-pane"
-        aria-valuemin={MIN_PDF_WIDTH}
-        aria-valuemax={MAX_PDF_WIDTH}
-        aria-valuenow={Math.round(pdfWidth)}
-        onPointerDown={startResize}
-        onPointerMove={resize}
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-          event.preventDefault()
-          event.stopPropagation()
-          const delta = event.key === 'ArrowLeft' ? -5 : 5
-          setPdfWidth((width) => clampWidth(width + delta))
-        }}
-      />
-      <div className="workspace-pane">
+      )}
+      card={(
         <CardWorkspace
           ref={cards}
-          onStartPdfRegion={(cardId) => setTarget({ mode: 'insert', cardId })}
+          onStartPdfRegion={(cardId) => {
+            revealPane('pdf')
+            setTarget({ mode: 'insert', cardId })
+          }}
           onActiveCardChange={onActiveCardChange}
           onOpenPdfSource={openPdfSource}
           onReferencesChange={setReferences}
         />
-      </div>
-    </div>
+      )}
+    />
   )
 }
 
@@ -163,7 +124,12 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [paused, setPaused] = useState(false)
   const [importingPdf, setImportingPdf] = useState(false)
-  const [pdfWidth, setPdfWidth] = useState(50)
+  const [layout, setLayout] = useState(loadLayout)
+
+  function changeLayout(next: Layout) {
+    setLayout(next)
+    saveLayout(next)
+  }
 
   useEffect(() => {
     function reloadDataset(event: StorageEvent) {
@@ -175,20 +141,32 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <BackupControls
-        disabled={importingPdf}
-        captureCanvas={() => cards.current?.captureCanvas() ?? null}
-        setBusy={setBusy}
-        setPaused={setPaused}
-      />
+      <header className="app-header">
+        <div className="app-brand"><span className="brand-mark" aria-hidden="true">C</span><span>Cardinal Notes</span></div>
+        <div className="layout-switch" role="group" aria-label="工作区模式">
+          {viewModes.map(({ mode, icon, label }) => (
+            <button type="button" className="layout-option" key={mode} aria-pressed={layout.mode === mode}
+              aria-label={label} title={label} disabled={busy} onClick={() => changeLayout({ ...layout, mode })}>
+              <WorkspaceIcon name={icon} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        <BackupControls
+          disabled={importingPdf}
+          captureCanvas={() => cards.current?.captureCanvas() ?? null}
+          setBusy={setBusy}
+          setPaused={setPaused}
+        />
+      </header>
       <div className="app-workspace" inert={busy}>
         {!paused && (
           <WorkspaceLease>
             <Workspace
               cards={cards}
               onPdfImportingChange={setImportingPdf}
-              pdfWidth={pdfWidth}
-              setPdfWidth={setPdfWidth}
+              layout={layout}
+              onLayoutChange={changeLayout}
             />
           </WorkspaceLease>
         )}

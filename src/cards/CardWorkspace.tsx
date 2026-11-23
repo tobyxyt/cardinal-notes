@@ -160,7 +160,7 @@ export default function CardWorkspace({
   }
 
   return (
-    <div style={{ height: '100%', display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)' }}>
+    <div className="card-workspace">
       <CardList
         hasUnknownReferences={hasUnknownReferences}
         items={cards.items}

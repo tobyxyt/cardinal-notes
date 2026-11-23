@@ -16,40 +16,50 @@
   min-height: 0;
 }
 
-.pdf-bar,
-.pdf-file-list {
+.pdf-tools {
   display: flex;
-  gap: 4px;
+  flex: none;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 9px;
   min-width: 0;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
 }
 
-.pdf-bar {
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
+.zoom-tools, .selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.zoom-value {
+  min-width: 41px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selection-tool {
+  padding-inline: 8px;
+}
+
+.selection-actions {
+  margin-inline-start: auto;
   flex-wrap: wrap;
 }
 
-.pdf-bar button {
-  white-space: nowrap;
-  min-height: 32px;
-  touch-action: manipulation;
+.primary-tool {
+  background: var(--accent);
+  color: white;
 }
 
-@media (pointer: coarse) {
-  .pdf-bar button {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
-.pdf-file-list {
-  overflow-x: auto;
-  flex: 1;
-}
-
-.pdf-file-list button[aria-pressed='true'] {
-  font-weight: bold;
+.pdf-tools .primary-tool:hover {
+  background: #3d366d;
+  color: white;
 }
 
 .pdf-workspace > p {
@@ -57,9 +67,39 @@
   overflow-wrap: anywhere;
 }
 
+.pdf-empty {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  padding: 16px;
+  background: #f4f4f8;
+  color: var(--ink);
+  text-align: center;
+}
+
+.pdf-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 3px;
+  border: 1px solid #e4dff2;
+  border-radius: 11px;
+  background: var(--selected);
+  color: var(--accent);
+}
+
+@container (max-width: 325px) {
+  .pdf-tools { gap: 3px; padding-inline: 4px; }
+  .selection-tool > span { display: none; }
+  .selection-actions { margin-inline-start: 0; }
+}
+
 .pdf-scroll-area {
   position: relative;
-  background: #eee;
+  background: #e9eaf0;
 }
 
 .pdf-scroll {

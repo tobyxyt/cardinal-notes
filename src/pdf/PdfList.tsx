@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
+import WorkspaceIcon from '../WorkspaceIcon'
 import type { PdfFile } from './pdfStorage'
 
 type PdfListProps = {
@@ -11,11 +12,17 @@ type PdfListProps = {
 
 export default function PdfList({ files, activeId, importDisabled, onImport, onSelect }: PdfListProps) {
   const input = useRef<HTMLInputElement>(null)
+  const activeTab = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeId])
 
   return (
-    <div className="pdf-bar">
-      <button type="button" disabled={importDisabled} onClick={() => input.current?.click()}>
-        导入 PDF
+    <div className="pane-tabs pdf-bar">
+      <button type="button" className={files.length ? 'tool-button' : 'text-button'} aria-label="导入 PDF" title="导入 PDF"
+        disabled={importDisabled} onClick={() => input.current?.click()}>
+        <WorkspaceIcon name="import" />
+        {!files.length && <span>导入 PDF</span>}
       </button>
       <input
         ref={input}
@@ -29,9 +36,10 @@ export default function PdfList({ files, activeId, importDisabled, onImport, onS
           onImport(selected)
         }}
       />
-      <div className="pdf-file-list" role="group" aria-label="PDF 列表">
+      <div className="tab-strip pdf-file-list" role="group" aria-label="PDF 列表">
         {files.map(({ id, name }) => (
-          <button key={id} type="button" aria-pressed={id === activeId} onClick={() => onSelect(id)}>
+          <button key={id} type="button" className="pane-tab tab-label" aria-pressed={id === activeId}
+            ref={id === activeId ? activeTab : undefined} title={name} onClick={() => onSelect(id)}>
             {name}
           </button>
         ))}

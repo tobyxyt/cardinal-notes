@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import WorkspaceIcon from '../WorkspaceIcon'
 import type { Card } from './cardStorage'
 
 type CardListProps = {
@@ -16,16 +17,23 @@ export default function CardList({
   hasUnknownReferences, items, activeId, onCreate, onStartPdfRegion, onSelect, onRename, onRemove,
 }: CardListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
+  const activeTab = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeId])
 
   return (
-    <header style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8, borderBottom: '1px solid #ddd' }}>
-      <button type="button" onClick={onCreate} style={{ flexShrink: 0 }}>新建 Card</button>
-      <button type="button" onClick={onStartPdfRegion}>插入 PDF 选区</button>
-      <div role="group" aria-label="Card 列表" style={{ display: 'flex', flex: '1 1 120px', gap: 4, overflowX: 'auto' }}>
+    <header className="pane-tabs card-tabs">
+      <button type="button" className="tool-button" aria-label="新建 Card" title="新建 Card" onClick={onCreate}>
+        <WorkspaceIcon name="plus" />
+      </button>
+      <div className="tab-strip" role="group" aria-label="Card 列表">
         {items.map((card) => (
-          <div key={card.id} style={{ display: 'flex', flexShrink: 0 }}>
+          <div key={card.id} className="pane-tab" data-active={card.id === activeId ? '' : undefined}
+            ref={card.id === activeId ? activeTab : undefined}>
             {editingId === card.id ? (
               <input
+                className="tab-edit"
                 aria-label="Card 标题"
                 autoFocus
                 defaultValue={card.title}
@@ -44,20 +52,32 @@ export default function CardList({
               <button
                 type="button"
                 aria-pressed={card.id === activeId}
-                style={{ fontWeight: card.id === activeId ? 'bold' : 'normal' }}
+                className="tab-label"
+                title={card.title}
+                onKeyDown={(event) => {
+                  if (event.key === 'F2') {
+                    event.preventDefault()
+                    setEditingId(card.id)
+                  }
+                }}
                 onClick={() => onSelect(card.id)}
                 onDoubleClick={() => setEditingId(card.id)}
               >
                 {card.title}
               </button>
             )}
-            <button type="button" aria-label={`删除 ${card.title}`} onClick={() => onRemove(card)}>
-              ×
+            <button type="button" className="tab-close" aria-label={`删除 ${card.title}`} title="删除 Card"
+              onClick={() => onRemove(card)}>
+              <WorkspaceIcon name="close" />
             </button>
           </div>
         ))}
       </div>
-      {hasUnknownReferences && <small role="status">部分 PDF 引用尚未确认。</small>}
+      <button type="button" className="tool-button" aria-label="插入 PDF 选区" title="插入 PDF 选区"
+        onClick={onStartPdfRegion}>
+        <WorkspaceIcon name="insert" />
+      </button>
+      {hasUnknownReferences && <small className="card-reference-status" role="status">部分 PDF 引用尚未确认。</small>}
     </header>
   )
 }

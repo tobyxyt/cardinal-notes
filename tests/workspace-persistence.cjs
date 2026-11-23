@@ -127,6 +127,8 @@ async function expectImage(page) {
 
 async function download(page, file) {
   const event = page.waitForEvent('download', timeout)
+  const more = page.getByRole('button', { name: '更多操作', exact: true })
+  if (await more.count()) await more.click()
   await page.getByRole('button', { name: '导出备份', exact: true }).click()
   await (await event).saveAs(file)
   await expect(page.getByText('备份已生成，下载已开始。')).toBeVisible()
@@ -138,6 +140,108 @@ async function restore(page, file) {
   await page.getByLabel('选择 ZIP 备份').setInputFiles(file)
   await expect(page.getByText('备份恢复成功。')).toBeVisible(timeout)
   await waitEditor(page)
+}
+
+async function verifyLayout(page, browser, origin) {
+  const workspace = page.locator('.split-workspace')
+  const separator = page.getByRole('separator')
+  const modeButton = (name) => page.getByRole('button', { name, exact: true })
+  const ratio = (percent) => expect(separator).toHaveAttribute('aria-valuenow', String(percent))
+  const mode = (value) => expect(workspace).toHaveAttribute('data-mode', value)
+  await expect(page.locator('.pdfViewer .page').first()).toBeVisible(timeout)
+  await page.evaluate(() => {
+    window.layoutFixture = {
+      editor: window.tldrawEditor ?? document.querySelector('.tl-container'),
+      store: window.tlsync.store,
+      viewer: document.querySelector('.pdfViewer'),
+      page: document.querySelector('.pdfViewer .page'),
+    }
+    window.addEventListener('error', event => {
+      if (event.message?.includes('ResizeObserver')) window.layoutError = event.message
+    })
+  })
+  const stillMounted = () => expect(page.evaluate(() => {
+    const original = window.layoutFixture
+    return (window.tldrawEditor ?? document.querySelector('.tl-container')) === original.editor &&
+      window.tlsync.store === original.store && document.querySelector('.pdfViewer') === original.viewer &&
+      document.querySelector('.pdfViewer .page') === original.page
+  })).resolves.toBe(true)
+
+  async function dragTo(fraction) {
+    const start = await separator.boundingBox()
+    const area = await workspace.boundingBox()
+    const y = start.y + start.height / 2
+    await page.mouse.move(start.x + start.width / 2, y)
+    await page.mouse.down()
+    await page.mouse.move(area.x + (area.width - start.width) * fraction + start.width / 2, y, { steps: 18 })
+    await page.mouse.up()
+  }
+
+  await ratio(50)
+  await dragTo(0.65)
+  await ratio(65)
+  await dragTo(0.08)
+  await mode('card')
+  await expect(page.locator('#pdf-pane')).toHaveAttribute('inert', '')
+  await expect(page.locator('#pdf-pane')).toBeHidden()
+  await stillMounted()
+  const expandPdf = modeButton('展开 PDF，恢复双栏')
+  await expect(expandPdf).toBeFocused()
+  await expandPdf.press('Enter')
+  await mode('split')
+  await ratio(65)
+  await dragTo(0.94)
+  await mode('pdf')
+  await expect(page.locator('#card-pane')).toHaveAttribute('inert', '')
+  await expect(page.locator('#card-pane')).toBeHidden()
+  await stillMounted()
+  await modeButton('展开 Card，恢复双栏').click()
+  await ratio(65)
+  await separator.dblclick()
+  await ratio(50)
+  await separator.press('ArrowRight')
+  await ratio(55)
+  await separator.press('End')
+  await mode('pdf')
+  await modeButton('仅 Card').click()
+  await mode('card')
+  await modeButton('插入 PDF 选区').click()
+  await mode('split')
+  await expect(page.getByRole('button', { name: '取消选区' })).toBeVisible()
+  await page.getByRole('button', { name: '取消选区' }).click()
+  await stillMounted()
+  await modeButton('仅 PDF').click()
+  expect(await page.evaluate(() => window.layoutError)).toBeUndefined()
+  await page.reload()
+  await mode('pdf')
+  await modeButton('展开 Card，恢复双栏').click()
+  await ratio(55)
+  await separator.press('Enter')
+  await ratio(50)
+
+  const touch = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true })
+  try {
+    const tablet = await touch.newPage()
+    await tablet.goto(origin)
+    const divider = tablet.getByRole('separator')
+    await expect(divider).toBeVisible()
+    const box = await divider.boundingBox()
+    const start = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    const session = await touch.newCDPSession(tablet)
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: start, y }] })
+    await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 70, y }] })
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await expect(tablet.locator('.split-workspace')).toHaveAttribute('data-mode', 'card')
+    await tablet.getByRole('button', { name: '展开 PDF，恢复双栏' }).tap()
+    await expect(divider).toHaveAttribute('aria-valuenow', '50')
+    await tablet.setViewportSize({ width: 390, height: 844 })
+    await expect(divider).toBeVisible()
+    expect(await tablet.locator('.app-shell').evaluate(node => node.scrollWidth)).toBeLessThanOrEqual(390)
+  } finally {
+    await touch.close()
+  }
+  console.log('Workspace snapping, expansion, keyboard, touch and persisted layout passed without remounting the editor or PDF.')
 }
 
 async function run() {
@@ -232,6 +336,7 @@ async function run() {
     await expect(marker(page)).toHaveCount(2, timeout)
     await expect(page.getByText('部分 PDF 引用尚未确认。')).toHaveCount(0)
     console.log('Inactive references work; valid indexes skip reads, and missing or malformed indexes rebuild after errors.')
+    await verifyLayout(page, browser, origin)
 
     const peer = await context.newPage()
     await peer.goto(origin)
@@ -283,7 +388,10 @@ async function run() {
     await expect(marker(restored)).toHaveCount(1, timeout)
     await expectImage(restored)
     expect(await restored.evaluate(() => window.tlsync.store.get('shape:photo').x)).toBe(390)
+    await restored.getByRole('button', { name: '仅 PDF', exact: true }).click()
+    await expect(restored.locator('#card-pane')).toBeHidden()
     await download(restored, newZip)
+    await expect(restored.locator('.split-workspace')).toHaveAttribute('data-mode', 'pdf')
     console.log('Existing v1 ZIP restored into a blank context; IDs, both PDF links, image bytes and reload were verified.')
 
     const clean = await browser.newContext({ viewport: { width: 1480, height: 950 } })

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import WorkspaceIcon from '../WorkspaceIcon'
 import { AnnotationEditorType, AnnotationMode } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { EventBus, PDFViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
 import 'pdfjs-dist/legacy/web/pdf_viewer.css'
@@ -65,8 +66,13 @@ export default function PdfReader({
       if (error) setError(`无法显示第 ${pageNumber} 页。`)
     }, { signal })
 
+    // Fit once resizing settles instead of recalculating page scales for every drag frame.
+    let fitTimer: number | undefined
     const resize = new ResizeObserver(() => {
-      if (viewer.currentScaleValue === 'page-width') fitWidth()
+      window.clearTimeout(fitTimer)
+      fitTimer = window.setTimeout(() => {
+        if (viewer.currentScaleValue === 'page-width') fitWidth()
+      }, 100)
     })
     resize.observe(element)
 
@@ -90,6 +96,7 @@ export default function PdfReader({
       viewer.setDocument(null)
       controller.abort()
       resize.disconnect()
+      window.clearTimeout(fitTimer)
       viewerRef.current = null
       source.release()
     }
@@ -106,27 +113,35 @@ export default function PdfReader({
 
   return (
     <div className="pdf-reader">
-      <div className="pdf-bar">
-        <button type="button" aria-label="缩小" disabled={scale === null} onClick={() => viewerRef.current?.decreaseScale()}>−</button>
-        <button type="button" aria-label="放大" disabled={scale === null} onClick={() => viewerRef.current?.increaseScale()}>+</button>
-        <button
-          type="button"
-          disabled={scale === null}
-          onClick={() => {
-            if (viewerRef.current) viewerRef.current.currentScaleValue = 'page-width'
-          }}
-        >
-          适应宽度
-        </button>
-        {scale !== null && <span aria-label="缩放比例">{Math.round(scale * 100)}%</span>}
-        <button type="button" disabled={scale === null} aria-pressed={selectionMode === 'create'} onClick={onStartSelection}>
-          选区
+      <div className="pdf-tools">
+        <div className="zoom-tools" role="group" aria-label="页面缩放">
+          <button type="button" className="tool-button" aria-label="缩小" title="缩小"
+            disabled={scale === null} onClick={() => viewerRef.current?.decreaseScale()}>
+            <WorkspaceIcon name="minus" />
+          </button>
+          <span className="zoom-value" aria-label="缩放比例">{scale === null ? '—' : `${Math.round(scale * 100)}%`}</span>
+          <button type="button" className="tool-button" aria-label="放大" title="放大"
+            disabled={scale === null} onClick={() => viewerRef.current?.increaseScale()}>
+            <WorkspaceIcon name="plus" />
+          </button>
+          <button type="button" className="tool-button fit-tool" aria-label="适应宽度" title="适应宽度"
+            disabled={scale === null} onClick={() => {
+              if (viewerRef.current) viewerRef.current.currentScaleValue = 'page-width'
+            }}>
+            <WorkspaceIcon name="fit" />
+          </button>
+        </div>
+        <button type="button" className="tool-button selection-tool" aria-label="选区" title="选区"
+          disabled={scale === null} aria-pressed={selectionMode !== null} onClick={onStartSelection}>
+          <WorkspaceIcon name="select" />
+          <span>选区</span>
         </button>
         {selectionMode && (
-          <>
+          <div className="selection-actions">
             {region ? (
               <button
                 type="button"
+                className="text-button primary-tool"
                 onClick={() => confirm(region)}
                 onPointerUp={(event) => tapAction(event, () => confirm(region))}
               >
@@ -135,12 +150,13 @@ export default function PdfReader({
             ) : <span role="status">在单页内拖动选区</span>}
             <button
               type="button"
+              className="text-button"
               onClick={onCancelSelection}
               onPointerUp={(event) => tapAction(event, onCancelSelection)}
             >
               取消选区
             </button>
-          </>
+          </div>
         )}
         {error ? <span role="alert">{error}</span> : scale === null && <span role="status">正在打开 PDF…</span>}
       </div>

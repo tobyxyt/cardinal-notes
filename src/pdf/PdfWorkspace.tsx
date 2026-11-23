@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import WorkspaceIcon from '../WorkspaceIcon'
 import { acquirePdfDocument, importPdf } from './pdfDocument'
 import PdfList from './PdfList'
 import PdfReader from './PdfReader'
@@ -149,11 +150,16 @@ export default function PdfWorkspace(props: PdfWorkspaceProps) {
       {sourceError && <p role="alert">{sourceError}</p>}
       {activeId
         ? <PdfReader key={activeId} id={activeId} {...props} references={references} destination={destination} />
-        : !loading && !errors && <p>导入 PDF 后即可阅读。</p>}
+        : !loading && !errors && (
+          <div className="pdf-empty">
+            <span className="pdf-empty-icon"><WorkspaceIcon name="pdf" /></span>
+            <strong>暂无 PDF</strong>
+          </div>
+        )}
       {!activeId && props.selectionMode && (
-        <div className="pdf-bar">
+        <div className="pdf-tools">
           <span role="status">请先导入要引用的 PDF</span>
-          <button type="button" onClick={props.onCancelSelection}>取消选区</button>
+          <button type="button" className="text-button" onClick={props.onCancelSelection}>取消选区</button>
         </div>
       )}
     </section>
