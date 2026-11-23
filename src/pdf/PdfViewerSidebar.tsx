@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnnotationMode } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist/types/src/display/api'
 import WorkspaceIcon from '../WorkspaceIcon'
-import type { PdfViewerSession } from './PdfReader'
+import type { PdfViewerSession } from './PdfViewerReader'
 
 type Outline = NonNullable<Awaited<ReturnType<PDFDocumentProxy['getOutline']>>>
 const PAGES_PER_GROUP = 24

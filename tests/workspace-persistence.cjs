@@ -1020,8 +1020,7 @@ async function verifyPdfViewer(browser, origin) {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   try {
-    const preview = origin + '/?pdfViewer=1'
-    await page.goto(preview)
+    await page.goto(origin)
     await openGeneral(page)
     await waitEditor(page)
     await page.getByLabel('选择 PDF 文件').setInputFiles([
@@ -1168,12 +1167,12 @@ async function verifyPdfViewer(browser, origin) {
     await expect(marker(page)).toHaveCount(2, timeout)
     await expect.poll(async () => (await regionShape()).map(({ props }) => props), timeout).toContainEqual(selected.props)
 
-    const backup = path.join(scratch, 'viewer-preview.zip')
+    const backup = path.join(scratch, 'pdf-viewer.zip')
     await download(page, backup)
     const restoredContext = await browser.newContext({ viewport: { width: 1480, height: 950 } })
     try {
       const restored = await restoredContext.newPage()
-      await restored.goto(preview)
+      await restored.goto(origin)
       await restore(restored, backup)
       await expect(restored.getByRole('textbox', { name: '页码' })).toHaveValue('2', timeout)
       await expect(marker(restored)).toHaveCount(2, timeout)
@@ -1189,12 +1188,8 @@ async function verifyPdfViewer(browser, origin) {
     const sidebar = await page.getByRole('complementary', { name: '页面缩略图' }).boundingBox()
     expect(sidebar.x + sidebar.width).toBeLessThanOrEqual(pane.x + pane.width)
     await button('关闭侧栏').tap()
-    await page.goto(origin)
-    await expect(pageNumber).toHaveCount(0)
-    await expect(marker(page)).toHaveCount(2, timeout)
-    await expect.poll(() => rendered.evaluate(canvas => canvas.height > canvas.width), timeout).toBe(true)
     expect(errors).toEqual([])
-    console.log('PDFViewer preview passed text copy, search, thumbnails, outline, high-DPI zoom, bounded rendering with 48 pages, rotated selection, both Card actions, source jump, independent sessions, ZIP restore, touch and legacy fallback.')
+    console.log('PDFViewer passed text copy, search, thumbnails, outline, high-DPI zoom, bounded rendering with 48 pages, rotated selection, both Card actions, source jump, independent sessions, ZIP restore and touch.')
   } finally {
     await context.close()
   }
@@ -1218,10 +1213,6 @@ async function run() {
   try {
     // Use installed Chrome by default. Pass --chromium to use Playwright's browser.
     browser = await chromium.launch({ channel: process.argv.includes('--chromium') ? undefined : 'chrome' })
-    if (process.argv.includes('--pdf-viewer-only')) {
-      await verifyPdfViewer(browser, origin)
-      return
-    }
     const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1480, height: 950 } })
     const page = await context.newPage()
     const errors = []

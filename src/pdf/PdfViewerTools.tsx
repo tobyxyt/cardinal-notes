@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { FindState } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
 import WorkspaceIcon from '../WorkspaceIcon'
-import type { PdfViewerSession } from './PdfReader'
+import type { PdfViewerSession } from './PdfViewerReader'
 import PdfViewerSidebar from './PdfViewerSidebar'
 
 type Matches = { current: number; total: number }
