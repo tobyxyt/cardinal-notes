@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react'
 import {
-  ArrangeMenuSubmenu, ClipboardMenuGroup, ConversionsMenuGroup, DefaultContextMenu, EditMenuSubmenu,
+  ArrangeMenuSubmenu, ClipboardMenuGroup, ConversionsMenuGroup, DefaultContextMenu, DefaultErrorFallback, EditMenuSubmenu,
   ReorderMenuSubmenu, SelectAllMenuItem, Tldraw, TldrawUiMenuGroup, TldrawUiMenuItem,
-  useEditor, useValue, type Editor, type TLUiComponents, type TLUiContextMenuProps, type TLUiOverrides,
+  useEditor, useValue, type Editor, type TLErrorFallbackProps, type TLComponents, type TLUiContextMenuProps, type TLUiOverrides,
 } from 'tldraw'
 import 'tldraw/tldraw.css'
 import type { PdfRegion } from '../pdf/pdfRegion'
@@ -12,6 +13,9 @@ import { watchCardToolPresets, withCardToolDragPreset } from './cardToolPresets'
 import './CardEditor.css'
 import { allowReferenceWrites } from './pdfReferenceIndex'
 import { PdfRegionShapeUtil } from './PdfRegionShape'
+
+const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY?.trim() || undefined
+const diagnoseCard = Capacitor.getPlatform() === 'ios' || new URLSearchParams(location.search).get('cardDiagnostics') === '1'
 
 const shapeUtils = [PdfRegionShapeUtil]
 const OpenPdfSource = createContext<(region: PdfRegion) => void>(() => undefined)
@@ -53,7 +57,13 @@ function CardContextMenu(props: TLUiContextMenuProps) {
   )
 }
 
-const components: TLUiComponents = {
+function CardErrorFallback(props: TLErrorFallbackProps) {
+  useEffect(() => { console.error('[CardEditor] tldraw error boundary', props.error) }, [props.error])
+  return <DefaultErrorFallback {...props} />
+}
+
+const components: TLComponents = {
+  ErrorFallback: CardErrorFallback,
   ContextMenu: CardContextMenu,
   PageMenu: null,
   QuickActions: null,
@@ -95,22 +105,80 @@ export default function CardEditor({
 }) {
   const { persistenceKey } = card
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading')
-  useEffect(() => allowReferenceWrites(persistenceKey, () => setState('ready'), () => setState('failed')), [persistenceKey])
+  const host = useRef<HTMLElement>(null)
+  const attempt = useId()
+
+  useEffect(() => {
+    if (!diagnoseCard) return
+    console.info('[CardEditor] mounted', { attempt, origin: location.protocol + '//' + location.host, licenseConfigured: !!licenseKey })
+    const controller = new AbortController()
+    const { signal } = controller
+    window.addEventListener('error', (event) => {
+      console.error('[CardEditor] window error', event.error ?? event.message)
+    }, { signal })
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('[CardEditor] unhandled rejection', event.reason)
+    }, { signal })
+    return () => {
+      controller.abort()
+      console.info('[CardEditor] unmounted', { attempt })
+    }
+  }, [attempt])
+
+  useEffect(() => {
+    const failed = () => setState('failed')
+    try {
+      return allowReferenceWrites(persistenceKey, () => {
+        if (diagnoseCard) console.info('[CardEditor] opening tldraw local store', { attempt })
+        setState('ready')
+      }, failed)
+    } catch (error) {
+      console.error('[CardEditor] reference writer initialization failed', error)
+      failed()
+    }
+  }, [attempt, persistenceKey])
+
+  // One layout sample after the SDK's five-second validation window. Diagnostics only.
+  useEffect(() => {
+    if (!diagnoseCard || state !== 'ready') return
+    const timer = window.setTimeout(() => {
+      const element = host.current
+      if (!element) return
+      const { width, height } = element.getBoundingClientRect()
+      console.info('[CardEditor] layout after initialization', {
+        attempt, width, height, visibility: getComputedStyle(element).visibility,
+        mode: element.closest<HTMLElement>('.split-workspace')?.dataset.mode,
+        pageHidden: !!element.closest('.editor-page[data-obscured]'),
+        canvas: !!element.querySelector('.tl-canvas'),
+        toolbar: !!element.querySelector('.card-tool-dock'),
+        // The pinned SDK renders this marker when its license gate takes over.
+        licenseGate: !!element.querySelector('[data-testid="tl-license-expired"]'),
+      })
+    }, 6000)
+    return () => window.clearTimeout(timer)
+  }, [attempt, state])
   if (state === 'failed') return <p role="alert">本地画布无法打开，请刷新后重试。</p>
   if (state === 'loading') return <p role="status">正在打开画布…</p>
 
   return (
-    <main className="card-editor">
+    <main className="card-editor" ref={host}>
       <OpenPdfSource.Provider value={onOpenPdfSource}>
         <Tldraw
           persistenceKey={card.persistenceKey}
+          licenseKey={licenseKey}
           components={components}
           overrides={overrides}
           shapeUtils={shapeUtils}
           onMount={(editor) => {
+            const started = performance.now()
+            if (diagnoseCard) console.info('[CardEditor] tldraw mounted; local store loaded', { attempt })
             const stopPresets = watchCardToolPresets(editor)
             const unmount = onEditorMount(card.id, editor)
-            return () => { stopPresets(); unmount() }
+            return () => {
+              if (diagnoseCard) console.info('[CardEditor] tldraw disposed', { attempt, elapsedMs: Math.round(performance.now() - started) })
+              stopPresets()
+              unmount()
+            }
           }}
         />
       </OpenPdfSource.Provider>

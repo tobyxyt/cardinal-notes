@@ -22,7 +22,14 @@ jobs:
         run: npm ci
 
       - name: Build web app
-        run: npm run build
+        env:
+          VITE_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
+        run: |
+          if [ -z "$VITE_TLDRAW_LICENSE_KEY" ]; then
+            echo "::error::Set the TLDRAW_LICENSE_KEY repository secret for the Capacitor iOS release build."
+            exit 1
+          fi
+          npm run build
 
       - name: Sync Capacitor
         run: npx cap sync ios
