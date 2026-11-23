@@ -1303,6 +1303,7 @@ async function run() {
       await openGeneral(page)
     }
     await waitEditor(page)
+    await expect(workspaceMenu(page).getByText('PencilKit Test', { exact: true })).toHaveCount(0)
     await page.locator('input[aria-label="选择 PDF 文件"], .pdf-bar input').setInputFiles([
       { name: 'Alpha.pdf', mimeType: 'application/pdf', buffer: makePdf('Alpha') },
       { name: 'Beta.pdf', mimeType: 'application/pdf', buffer: makePdf('Beta') },

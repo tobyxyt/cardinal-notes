@@ -115,7 +115,7 @@ export default function App() {
         </nav>
         {page === 'editor' && (
           <WorkspaceMenu active={active} items={sessions.items} disabled={busy || importingPdf}
-            onSelect={selectWorkspace} onClear={clearWorkspace} />
+            onSelect={selectWorkspace} onClear={clearWorkspace} onError={setOperationError} />
         )}
         <BackupControls
           disabled={importingPdf}
