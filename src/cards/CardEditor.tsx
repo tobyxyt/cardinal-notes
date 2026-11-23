@@ -71,7 +71,7 @@ const overrides: TLUiOverrides = {
       ...adjustStyles,
       onSelect(source) {
         const shape = editor.getOnlySelectedShape()
-        const firstControl = editor.getContainer().querySelector<HTMLButtonElement>('.card-style-dock button')
+        const firstControl = editor.getContainer().querySelector<HTMLElement>('.card-style-dock :is(button, input[type=range])')
         if (shape?.type === 'image' || shape?.type === 'video' || !firstControl) {
           return adjustStyles.onSelect(source)
         }
