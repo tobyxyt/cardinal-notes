@@ -147,7 +147,7 @@ export default function Editor({
             />
           )}
           overlay={showingEditor && (
-            <WorkspaceNavigation pdf={pdf} activeCardId={activeCardId} references={references}
+            <WorkspaceNavigation mode={layout.mode} pdf={pdf} activeCardId={activeCardId} references={references}
               hasUnknownReferences={hasUnknownReferences} onImport={selectPdfFiles} onOpenPdf={openPdf}
               onOpenCard={openCard} />
           )}

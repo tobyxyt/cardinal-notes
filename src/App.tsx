@@ -5,7 +5,6 @@ import { verifySavedCanvas, waitForCanvasSaves } from './cards/canvasPersistence
 import type { LibraryDocument } from './library/Library'
 import BackupControls from './backup/BackupControls'
 import { ACTIVE_DATASET_KEY, readActiveDataset, WORKSPACE_LOCK, workspaceDataset } from './dataset'
-import { viewModes } from './WorkspaceLayout'
 import WorkspaceIcon from './WorkspaceIcon'
 import Editor from './workspace/Editor'
 import WorkspaceMenu from './workspace/WorkspaceMenu'
@@ -99,16 +98,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <header className="app-header" data-editor={page === 'editor' ? '' : undefined}>
         <nav className="app-header-start app-pages" aria-label="主导航">
           <button type="button" className="tool-button home-button" aria-label="Home" title="Home"
             aria-current={page === 'home' ? 'page' : undefined} disabled={busy} onClick={() => goTo('home')}>
             <WorkspaceIcon name="home" />
           </button>
-          {page === 'editor' ? (
-            <WorkspaceMenu active={active} items={sessions.items} disabled={busy || importingPdf}
-              onSelect={selectWorkspace} onClear={clearWorkspace} />
-          ) : (
+          {page !== 'editor' && (
             <>
               <button type="button" className="text-button" aria-current={page === 'library' ? 'page' : undefined}
                 disabled={busy} onClick={() => goTo('library')}>Library</button>
@@ -117,15 +113,10 @@ export default function App() {
             </>
           )}
         </nav>
-        {page === 'editor' && <div className="layout-switch app-layout-switch" role="group" aria-label="工作区模式">
-          {viewModes.map(({ mode, icon, label }) => (
-            <button type="button" className="layout-option" key={mode} aria-pressed={active.layout.mode === mode}
-              aria-label={label} title={label} disabled={busy} onClick={() => { void update(active.id, (session) => ({ ...session, layout: { ...session.layout, mode } })) }}>
-              <WorkspaceIcon name={icon} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>}
+        {page === 'editor' && (
+          <WorkspaceMenu active={active} items={sessions.items} disabled={busy || importingPdf}
+            onSelect={selectWorkspace} onClear={clearWorkspace} />
+        )}
         <BackupControls
           disabled={importingPdf}
           captureCanvas={() => cards.current?.captureCanvas()}

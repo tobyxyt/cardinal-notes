@@ -19,12 +19,6 @@ export function loadLayout(): Layout {
   return { mode: 'split', pdfWidth: 50 }
 }
 
-export const viewModes = [
-  { mode: 'pdf', icon: 'pdf', label: '仅 PDF' },
-  { mode: 'split', icon: 'split', label: '双栏' },
-  { mode: 'card', icon: 'card', label: '仅 Card' },
-] as const
-
 type Drag = {
   pointerId: number
   start: number

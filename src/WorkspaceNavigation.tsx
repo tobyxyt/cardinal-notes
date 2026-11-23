@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { PdfRegionReference } from './pdf/pdfRegion'
 import type { PdfFile } from './pdf/pdfStorage'
 import WorkspaceIcon from './WorkspaceIcon'
+import type { WorkspaceMode } from './WorkspaceLayout'
 import './workspaceNavigation.css'
 
 type Side = 'pdf' | 'cards'
@@ -215,8 +216,9 @@ function LinkedCardNavigation({
 }
 
 export default function WorkspaceNavigation({
-  pdf, activeCardId, references, hasUnknownReferences, onImport, onOpenPdf, onOpenCard,
+  mode, pdf, activeCardId, references, hasUnknownReferences, onImport, onOpenPdf, onOpenCard,
 }: {
+  mode: WorkspaceMode
   pdf: Pick<import('./pdf/usePdfWorkspace').PdfWorkspaceState, 'files' | 'openFiles' | 'activeId' | 'loading' | 'importing'>
   activeCardId: string
   references: PdfRegionReference[]
@@ -226,22 +228,32 @@ export default function WorkspaceNavigation({
   onOpenCard: (id: string) => void
 }) {
   const [state, setState] = useState<NavigationState>(null)
+  useEffect(() => {
+    if (mode === 'split') return
+    const hiddenSide = mode === 'pdf' ? 'cards' : 'pdf'
+    setState((current) => current?.side === hiddenSide ? null : current)
+  }, [mode])
+
   return (
     <>
-      <EdgeNavigation side="pdf" title="PDF 导航" icon="library" state={state} setState={setState}>
-        {(afterSelect) => (
-          <PdfNavigation files={pdf.files} openFiles={pdf.openFiles} activeId={pdf.activeId}
-            loading={pdf.loading} importDisabled={pdf.loading || pdf.importing} onImport={onImport}
-            onSelect={(id) => { onOpenPdf(id); afterSelect() }} />
-        )}
-      </EdgeNavigation>
-      <EdgeNavigation side="cards" title="Linked Cards" icon="link" state={state} setState={setState}>
-        {(afterSelect) => (
-          <LinkedCardNavigation files={pdf.openFiles} activePdfId={pdf.activeId} activeCardId={activeCardId}
-            references={references} hasUnknownReferences={hasUnknownReferences}
-            onOpenCard={(id) => { onOpenCard(id); afterSelect() }} />
-        )}
-      </EdgeNavigation>
+      {mode !== 'card' && (
+        <EdgeNavigation side="pdf" title="PDF 导航" icon="library" state={state} setState={setState}>
+          {(afterSelect) => (
+            <PdfNavigation files={pdf.files} openFiles={pdf.openFiles} activeId={pdf.activeId}
+              loading={pdf.loading} importDisabled={pdf.loading || pdf.importing} onImport={onImport}
+              onSelect={(id) => { onOpenPdf(id); afterSelect() }} />
+          )}
+        </EdgeNavigation>
+      )}
+      {mode !== 'pdf' && (
+        <EdgeNavigation side="cards" title="Linked Cards" icon="link" state={state} setState={setState}>
+          {(afterSelect) => (
+            <LinkedCardNavigation files={pdf.openFiles} activePdfId={pdf.activeId} activeCardId={activeCardId}
+              references={references} hasUnknownReferences={hasUnknownReferences}
+              onOpenCard={(id) => { onOpenCard(id); afterSelect() }} />
+          )}
+        </EdgeNavigation>
+      )}
     </>
   )
 }
