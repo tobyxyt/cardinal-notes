@@ -597,9 +597,11 @@ async function verifySessions(page, scratch) {
   await expect(pdfButton(page, 'Study')).toHaveAttribute('aria-pressed', 'true')
   await activateExistingCard(page, 'Card 1')
   await expectImage(page)
-  await page.getByRole('separator').press('ArrowRight')
-  await page.getByRole('separator').press('ArrowRight')
-  await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '60')
+  const separator = page.getByRole('separator')
+  await separator.press('ArrowRight')
+  await expect(separator).toHaveAttribute('aria-valuenow', '55')
+  await separator.press('ArrowRight')
+  await expect(separator).toHaveAttribute('aria-valuenow', '60')
   await page.getByRole('button', { name: '放大', exact: true }).click()
   const scroll = page.locator('.pdf-scroll')
   await expect(scroll.locator('.page')).toHaveCount(2)
@@ -612,7 +614,10 @@ async function verifySessions(page, scratch) {
   const zoom = await page.getByLabel('缩放比例').textContent()
   expect(atTwo.scale).not.toBe('page-width')
   await page.locator('[data-shape-id="shape:first-b"]').click({ button: 'right', force: true })
-  await page.getByText('跳转到 PDF 来源', { exact: true }).click()
+  const jumpToSource = page.getByText('跳转到 PDF 来源', { exact: true })
+  await expect(jumpToSource).toBeVisible()
+  await expect(page.getByTestId('context-menu-sub.move-to-page-button')).toHaveCount(0)
+  await jumpToSource.click()
   await expect(workspaceName(page, 'Reading')).toHaveAttribute('aria-current', 'page')
   await expect(pdfButton(page, 'Beta')).toHaveAttribute('aria-pressed', 'true')
   await selectPdf(page, 'Study')
@@ -735,6 +740,128 @@ async function verifyWorkspaceCleanup(page) {
   console.log('Permanent Library deletions pruned every workspace and protected referenced PDF sources.')
 }
 
+async function verifyCardUi(browser, origin) {
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true })
+  const page = await context.newPage()
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+
+  try {
+    await page.goto(origin)
+    await openGeneral(page)
+    await waitEditor(page)
+
+    const toolbar = page.getByRole('toolbar', { name: 'Card 工具' })
+    const styles = page.getByRole('group', { name: 'Card 样式' })
+    const controls = (name) => styles.getByRole('button', { name, exact: true })
+    const more = toolbar.getByRole('button', { name: /^更多工具/ })
+    const selectTool = (id) => toolbar.getByTestId('tools.' + id)
+    const canvas = page.getByTestId('canvas')
+
+    for (const id of ['select', 'hand', 'draw', 'eraser', 'text', 'highlight']) {
+      await expect(selectTool(id)).toBeVisible()
+    }
+    await expect(toolbar.getByTestId('toolbar.undo')).toBeDisabled()
+    await expect(toolbar.getByTestId('toolbar.redo')).toBeDisabled()
+    await expect(page.getByTestId('page-menu.button')).toHaveCount(0)
+    await expect(styles).toHaveCount(0)
+    await more.tap()
+    const menu = page.getByRole('menu')
+    for (const id of ['arrow', 'line', 'ellipse', 'note', 'frame', 'asset', 'laser']) {
+      await expect(menu.getByTestId('toolbar.' + id)).toBeAttached()
+    }
+    await menu.getByTestId('toolbar.rectangle').click()
+    await expect(more).toHaveAttribute('data-isactive', 'true')
+    await expect(controls('填充')).toBeVisible()
+    await expect(controls('线型')).toBeVisible()
+    await selectTool('text').tap()
+    await expect(controls('字号')).toBeVisible()
+    await expect(controls('字体')).toBeVisible()
+    await expect(controls('填充')).toHaveCount(0)
+    await selectTool('hand').tap()
+    await expect(styles).toHaveCount(0)
+    await selectTool('highlight').tap()
+    await expect(selectTool('highlight')).toHaveAttribute('aria-pressed', 'true')
+    await selectTool('draw').tap()
+    await expect(controls('粗细')).toBeVisible()
+    await controls('颜色').tap()
+    await page.getByTestId('style.color.blue').click()
+    if (await controls('颜色').getAttribute('aria-expanded') === 'true') await controls('颜色').click()
+    await expect(page.getByTestId('style.color.blue')).toBeHidden()
+    await controls('粗细').tap()
+    await page.getByTestId('style.size.l').click()
+    if (await controls('粗细').getAttribute('aria-expanded') === 'true') await controls('粗细').click()
+    await expect(page.getByTestId('style.size.l')).toBeHidden()
+    const area = await canvas.boundingBox()
+    const x = area.x + area.width * .45
+    const y = area.y + area.height * .4
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + 44, y + 9, { steps: 12 })
+    await page.mouse.up()
+    const strokes = () => page.evaluate(() => window.tlsync.store.allRecords().filter((r) => r.type === 'draw'))
+    await expect.poll(async () => (await strokes()).map(({ props }) => [props.color, props.size])).toEqual([['blue', 'l']])
+    await toolbar.getByTestId('toolbar.undo').click()
+    await expect.poll(async () => (await strokes()).length).toBe(0)
+    await toolbar.getByTestId('toolbar.redo').click()
+    await expect.poll(async () => (await strokes()).length).toBe(1)
+    await page.keyboard.press('v')
+    await expect(selectTool('select')).toHaveAttribute('aria-pressed', 'true')
+    await expect(styles).toHaveCount(0)
+    await page.mouse.click(x + 18, y + 4)
+    await expect(controls('粗细')).toBeVisible()
+    await page.keyboard.press('Control+Enter')
+    await expect(controls('颜色')).toBeFocused()
+    await controls('颜色').click()
+    await page.getByTestId('style.color.red').click()
+    if (await controls('颜色').getAttribute('aria-expanded') === 'true') await controls('颜色').click()
+    await expect.poll(async () => (await strokes())[0]?.props.color).toBe('red')
+
+    // A legacy page remains intact and the disabled UI shortcut cannot switch to it.
+    const currentPage = (await strokes())[0].parentId
+    await page.evaluate((currentPage) => {
+      const store = window.tlsync.store
+      store.put([{ ...store.get(currentPage), id: 'page:legacy-card-ui', index: 'a2', name: 'Legacy page' }])
+    }, currentPage)
+    await canvas.click({ position: { x: 120, y: 190 } })
+    await page.keyboard.press('Alt+ArrowRight')
+    const pageState = () => page.evaluate(() => {
+      const records = window.tlsync.store.allRecords()
+      return { current: records.find((r) => r.typeName === 'instance').currentPageId,
+        pages: records.filter((r) => r.typeName === 'page').map((r) => r.id).sort() }
+    })
+    expect(await pageState()).toEqual({ current: currentPage, pages: [currentPage, 'page:legacy-card-ui'].sort() })
+    await page.getByRole('button', { name: '新建 Card', exact: true }).click()
+    await expect(cardButton(page, 2)).toHaveAttribute('aria-pressed', 'true')
+    await cardButton(page, 1).click()
+    const { items: [first] } = await cardState(page)
+    await waitEditor(page, first.persistenceKey)
+    expect((await strokes())[0].props.color).toBe('red')
+    await page.reload()
+    await waitEditor(page, first.persistenceKey)
+    expect((await strokes())[0].props.color).toBe('red')
+    expect(await pageState()).toEqual({ current: currentPage, pages: [currentPage, 'page:legacy-card-ui'].sort() })
+    await expect(page.getByTestId('page-menu.button')).toHaveCount(0)
+
+    await page.setViewportSize({ width: 540, height: 768 })
+    await selectTool('text').tap()
+    await expect(controls('字号')).toBeVisible()
+    const pane = await page.locator('.card-editor').boundingBox()
+    const bar = await toolbar.boundingBox()
+    const styleBar = await styles.boundingBox()
+    expect(Math.abs(bar.x + bar.width / 2 - pane.x - pane.width / 2)).toBeLessThan(1)
+    expect(bar.width).toBeLessThanOrEqual(pane.width)
+    expect(styleBar.y + styleBar.height).toBeLessThan(bar.y)
+    await expect(more).toBeInViewport()
+    await more.tap()
+    await expect(menu.getByTestId('toolbar.rectangle')).toBeVisible()
+    expect(errors).toEqual([])
+    console.log('Card toolbar touch controls, contextual styles, color and thickness writes, history, shortcuts, legacy page data, and reload passed.')
+  } finally {
+    await context.close()
+  }
+}
+
 async function run() {
   if (verifyLegacy) buildOld()
   let dist = verifyLegacy ? oldDist : newDist
@@ -851,6 +978,7 @@ async function run() {
     await expect(marker(page)).toHaveCount(2, timeout)
     await expect(page.getByText('部分 PDF 引用尚未确认。')).toHaveCount(0)
     console.log('Inactive references work; valid indexes skip reads, and missing or malformed indexes rebuild after errors.')
+    await verifyCardUi(browser, origin)
     await verifyLayout(page, browser, origin)
     await verifyNavigation(page, browser, origin)
 

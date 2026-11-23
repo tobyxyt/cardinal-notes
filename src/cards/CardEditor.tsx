@@ -1,11 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import {
-  DefaultContextMenu, DefaultContextMenuContent, Tldraw, TldrawUiMenuGroup, TldrawUiMenuItem,
-  useEditor, useValue, type Editor, type TLUiContextMenuProps,
+  ArrangeMenuSubmenu, ClipboardMenuGroup, ConversionsMenuGroup, DefaultContextMenu, EditMenuSubmenu,
+  ReorderMenuSubmenu, SelectAllMenuItem, Tldraw, TldrawUiMenuGroup, TldrawUiMenuItem,
+  useEditor, useValue, type Editor, type TLUiComponents, type TLUiContextMenuProps, type TLUiOverrides,
 } from 'tldraw'
 import 'tldraw/tldraw.css'
 import type { PdfRegion } from '../pdf/pdfRegion'
 import type { Card } from './cardStorage'
+import CardToolbar from './CardToolbar'
+import './CardEditor.css'
 import { allowReferenceWrites } from './pdfReferenceIndex'
 import { PdfRegionShapeUtil } from './PdfRegionShape'
 
@@ -35,12 +38,49 @@ function CardContextMenu(props: TLUiContextMenuProps) {
           />
         </TldrawUiMenuGroup>
       )}
-      <DefaultContextMenuContent />
+      <TldrawUiMenuGroup id="modify">
+        <EditMenuSubmenu />
+        <ArrangeMenuSubmenu />
+        <ReorderMenuSubmenu />
+      </TldrawUiMenuGroup>
+      <ClipboardMenuGroup />
+      <ConversionsMenuGroup />
+      <TldrawUiMenuGroup id="select-all">
+        <SelectAllMenuItem />
+      </TldrawUiMenuGroup>
     </DefaultContextMenu>
   )
 }
 
-const components = { ContextMenu: CardContextMenu }
+const components: TLUiComponents = {
+  ContextMenu: CardContextMenu,
+  PageMenu: null,
+  QuickActions: null,
+  StylePanel: null,
+  Toolbar: CardToolbar,
+}
+
+const overrides: TLUiOverrides = {
+  actions(editor, actions) {
+    delete actions['change-page-prev']
+    delete actions['change-page-next']
+    delete actions['move-to-new-page']
+
+    const adjustStyles = actions['adjust-shape-styles']
+    actions['adjust-shape-styles'] = {
+      ...adjustStyles,
+      onSelect(source) {
+        const shape = editor.getOnlySelectedShape()
+        const firstControl = editor.getContainer().querySelector<HTMLButtonElement>('.card-style-dock button')
+        if (shape?.type === 'image' || shape?.type === 'video' || !firstControl) {
+          return adjustStyles.onSelect(source)
+        }
+        firstControl.focus()
+      },
+    }
+    return actions
+  },
+}
 
 export default function CardEditor({
   card, onEditorMount, onOpenPdfSource,
@@ -56,11 +96,12 @@ export default function CardEditor({
   if (state === 'loading') return <p role="status">正在打开画布…</p>
 
   return (
-    <main style={{ position: 'relative' }}>
+    <main className="card-editor">
       <OpenPdfSource.Provider value={onOpenPdfSource}>
         <Tldraw
           persistenceKey={card.persistenceKey}
           components={components}
+          overrides={overrides}
           shapeUtils={shapeUtils}
           onMount={(editor) => onEditorMount(card.id, editor)}
         />
