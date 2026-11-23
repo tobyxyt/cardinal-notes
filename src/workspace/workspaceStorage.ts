@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type Tabs = { ids: string[]; activeId: string }
 export type DocumentKind = 'pdf' | 'card'
-export type PdfView = { page: number; scale: number | 'page-width'; left: number; top: number; at: number }
+export type PdfView = { page: number; scale: number | 'page-width' | 'page-fit'; left: number; top: number; at: number; rotation?: number }
 export type WorkspaceSession = {
   id: string
   name: string
@@ -75,14 +75,16 @@ export function pruneDocuments(data: WorkspaceData, kind: DocumentKind, availabl
 function validView(value: unknown): value is PdfView {
   const view = value as PdfView
   return !!view && Number.isSafeInteger(view.page) && view.page > 0 &&
-    (view.scale === 'page-width' || (Number.isFinite(view.scale) && view.scale > 0 && view.scale <= 100)) &&
+    (view.scale === 'page-width' || view.scale === 'page-fit' || (Number.isFinite(view.scale) && view.scale > 0 && view.scale <= 100)) &&
+    (view.rotation === undefined || [0, 90, 180, 270].includes(view.rotation)) &&
     Number.isFinite(view.left) && Number.isFinite(view.top) && Number.isFinite(view.at) && view.at >= 0
 }
 
 export function saveView(session: WorkspaceSession, id: string, view: PdfView): WorkspaceSession {
   const previous = session.reading[id]
   if (!session.pdf.ids.includes(id) || !validView(view) || (previous && (previous.at > view.at ||
-      (previous.page === view.page && previous.scale === view.scale && previous.left === view.left && previous.top === view.top)))) {
+      (previous.page === view.page && previous.scale === view.scale && previous.left === view.left &&
+        previous.top === view.top && (previous.rotation ?? 0) === (view.rotation ?? 0))))) {
     return session
   }
   return { ...session, reading: { ...session.reading, [id]: view } }

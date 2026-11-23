@@ -1,0 +1,124 @@
+.pdf-reader:has(> .pdf-viewer-tools) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.pdf-reader > .pdf-tools { grid-column: 1 / -1; }
+.pdf-reader > .pdf-scroll-area { grid-row: 4; grid-column: -2 / -1; }
+
+.pdf-reader:has(> .pdf-viewer-sidebar) {
+  grid-template-columns: minmax(104px, 24%) minmax(0, 1fr);
+}
+
+.pdf-viewer-tools .text-button,
+.pdf-viewer-sidebar .text-button {
+  font-size: 13px;
+}
+
+.pdf-viewer-tools [aria-expanded="true"],
+.pdf-thumbnail-grid [aria-current="page"] {
+  color: var(--accent);
+  background: var(--selected);
+}
+
+.pdf-page-input {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-page-input input,
+.pdf-find input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 5px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  min-height: 27px;
+}
+
+.pdf-page-input input {
+  width: 5ch;
+  text-align: center;
+}
+
+.pdf-find input {
+  flex: 1 0 10ch;
+  width: 0;
+  min-width: 0;
+}
+
+.pdf-find-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pdf-viewer-sidebar {
+  grid-row: 4;
+  grid-column: 1;
+  z-index: 3;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.pdf-sidebar-title,
+.pdf-thumbnail-paging {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px;
+}
+
+.pdf-sidebar-title {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.pdf-viewer-sidebar :is(ul, p) { margin: 0; padding: 6px; }
+.pdf-viewer-sidebar ul { list-style: none; }
+.pdf-viewer-sidebar li ul { padding-block: 0; padding-inline-start: 10px; }
+.pdf-viewer-sidebar li button { white-space: normal; text-align: start; overflow-wrap: anywhere; }
+
+.pdf-thumbnail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
+  gap: 3px;
+  padding: 4px;
+}
+
+.pdf-thumbnail-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 4px;
+}
+
+.pdf-thumbnail {
+  display: block;
+  visibility: hidden;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 115px;
+  background: white;
+}
+
+.pdf-scroll[data-selecting] .annotationLayer,
+.pdf-scroll[data-selecting] .annotationLayer * {
+  pointer-events: none;
+}
+
+@container (max-width: 420px) {
+  .pdf-reader:has(> .pdf-viewer-sidebar) { grid-template-columns: minmax(0, 1fr); }
+  .pdf-viewer-sidebar { width: min(78%, 194px); box-shadow: 2px 0 10px #0002; }
+}

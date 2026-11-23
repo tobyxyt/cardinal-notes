@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import WorkspaceIcon from '../WorkspaceIcon'
 import PdfList from './PdfList'
 import PdfReader from './PdfReader'
@@ -6,6 +6,9 @@ import type { PdfRegion, PdfRegionMode, PdfRegionReference } from './pdfRegion'
 import type { PdfView } from '../workspace/workspaceStorage'
 import type { PdfWorkspaceState } from './usePdfWorkspace'
 import './pdf.css'
+
+const PdfViewerReader = lazy(() => import('./PdfViewerReader'))
+const Reader = new URLSearchParams(window.location.search).get('pdfViewer') === '1' ? PdfViewerReader : PdfReader
 
 type PdfWorkspaceProps = {
   pdf: PdfWorkspaceState
@@ -40,8 +43,10 @@ export default function PdfWorkspace({ pdf, workspaceId, reading, onReadingChang
       {errors && <p role="alert">{errors}</p>}
       {sourceError && <p role="alert">{sourceError}</p>}
       {activeId
-        ? <PdfReader key={workspaceId + activeId} id={activeId} {...props} references={references} destination={destination}
-            workspaceId={workspaceId} initialView={destination ? undefined : reading[activeId]} onReadingChange={onReadingChange} />
+        ? <Suspense fallback={<p role="status">正在加载 PDF 阅读器…</p>}>
+            <Reader key={workspaceId + ':' + activeId} id={activeId} {...props} references={references} destination={destination}
+              workspaceId={workspaceId} initialView={reading[activeId]} onReadingChange={onReadingChange} />
+          </Suspense>
         : !loading && !errors && (
           <div className="pdf-empty">
             <span className="pdf-empty-icon"><WorkspaceIcon name="pdf" /></span>

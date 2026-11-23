@@ -44,16 +44,23 @@ function buildOld() {
   execFileSync(process.execPath, [path.join(target, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], { cwd: old })
 }
 
-function makePdf(label, multiple = false) {
+function makePdf(label, pageCount = 1, withOutline = false) {
+  const children = [3, ...Array.from({ length: pageCount - 1 }, (_, index) => index + 6)]
   const stream = '0.0 0.4 0.7 rg 40 650 110 110 re f\nBT /F1 18 Tf 100 600 Td (' + label + ') Tj ET'
   const parts = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    multiple ? '<< /Type /Pages /Count 2 /Kids [3 0 R 6 0 R] >>' : '<< /Type /Pages /Count 1 /Kids [3 0 R] >>',
+    '<< /Type /Pages /Count ' + pageCount + ' /Kids [' + children.map(id => id + ' 0 R').join(' ') + '] >>',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     '<< /Length ' + Buffer.byteLength(stream) + ' >>\nstream\n' + stream + '\nendstream',
   ]
-  if (multiple) parts.push(parts[2])
+  for (let page = 2; page <= pageCount; page++) parts.push(parts[2])
+  if (withOutline) {
+    parts[0] = '<< /Type /Catalog /Pages 2 0 R /Outlines 7 0 R >>'
+    parts[5] = parts[5].replace('/MediaBox', '/Rotate 90 /MediaBox')
+    parts.push('<< /Type /Outlines /First 8 0 R /Last 8 0 R /Count 1 >>',
+      '<< /Title (Second chapter) /Parent 7 0 R /Dest [6 0 R /Fit] >>')
+  }
   const offsets = []
   let pdf = '%PDF-1.4\n'
   for (const [index, part] of parts.entries()) {
@@ -592,7 +599,7 @@ async function verifySessions(page, scratch) {
   await expect(page.locator('.card-tabs .pane-tab')).toHaveCount(0)
   await expect(page.locator('canvas.tl-canvas')).toHaveCount(0)
   await page.getByLabel('选择 PDF 文件').setInputFiles({
-    name: 'Study.pdf', mimeType: 'application/pdf', buffer: makePdf('Study', true),
+    name: 'Study.pdf', mimeType: 'application/pdf', buffer: makePdf('Study', 2),
   })
   await expect(pdfButton(page, 'Study')).toHaveAttribute('aria-pressed', 'true')
   await activateExistingCard(page, 'Card 1')
@@ -1003,6 +1010,196 @@ async function verifyCardUi(browser, origin) {
   }
 }
 
+
+async function verifyPdfViewer(browser, origin) {
+  const context = await browser.newContext({
+    viewport: { width: 1480, height: 950 }, deviceScaleFactor: 2, hasTouch: true,
+    permissions: ['clipboard-read', 'clipboard-write'],
+  })
+  const page = await context.newPage()
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  try {
+    const preview = origin + '/?pdfViewer=1'
+    await page.goto(preview)
+    await openGeneral(page)
+    await waitEditor(page)
+    await page.getByLabel('选择 PDF 文件').setInputFiles([
+      { name: 'Other.pdf', mimeType: 'application/pdf', buffer: makePdf('Other', 48) },
+      { name: 'Viewer.pdf', mimeType: 'application/pdf', buffer: makePdf('Sample phrase', 2, true) },
+    ])
+    const button = (name) => page.getByRole('button', { name, exact: true })
+    const pageNumber = page.getByRole('textbox', { name: '页码' })
+    const scroll = page.locator('.pdf-scroll')
+    const second = scroll.locator('.page[data-page-number="2"]')
+    const rendered = second.locator('.canvasWrapper canvas').first()
+    async function go(number) {
+      await pageNumber.fill(String(number))
+      await pageNumber.press('Enter')
+    }
+    await expect(pageNumber).toHaveValue('1', timeout)
+    const first = scroll.locator('.page[data-page-number="1"]')
+    const text = first.locator('.textLayer').getByText('Sample phrase', { exact: true })
+    await expect(text).toBeVisible(timeout)
+    await text.evaluate(node => {
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      getSelection().removeAllRanges()
+      getSelection().addRange(range)
+    })
+    await page.keyboard.press('Control+c')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), timeout).toBe('Sample phrase')
+    await button('查找 PDF 文字').click()
+    await page.getByRole('searchbox', { name: 'PDF 搜索内容' }).fill('missing phrase')
+    await expect(page.locator('.pdf-find-count')).toHaveText('无匹配', timeout)
+    await page.getByRole('searchbox', { name: 'PDF 搜索内容' }).fill('Sample')
+    await expect(page.locator('.pdf-find-count')).toHaveText('1 / 2', timeout)
+    await expect(first.locator('.textLayer .highlight.selected')).toHaveText('Sample', timeout)
+    await button('下一个匹配').click()
+    await expect(page.locator('.pdf-find-count')).toHaveText('2 / 2', timeout)
+    await expect(second.locator('.textLayer .highlight.selected')).toHaveText('Sample', timeout)
+    await expect(pageNumber).toHaveValue('2')
+    await button('上一个匹配').click()
+    await expect(pageNumber).toHaveValue('1')
+    await page.getByRole('searchbox').press('Escape')
+    await expect(first.locator('.textLayer .highlight')).toHaveCount(0, timeout)
+    await button('缩略图').click()
+    const thumb = button('跳至第 2 页')
+    await expect(thumb.locator('canvas')).toBeVisible(timeout)
+    const thumbnail = await thumb.locator('canvas').evaluate(canvas => ({ width: canvas.width, height: canvas.height }))
+    expect(thumbnail.width).toBeGreaterThan(thumbnail.height)
+    await thumb.click()
+    await expect(pageNumber).toHaveValue('2')
+    await button('关闭侧栏').click()
+    await go(1)
+    await expect(pageNumber).toHaveValue('1')
+    await button('大纲').click()
+    await button('Second chapter').click()
+    await expect(pageNumber).toHaveValue('2')
+    await button('关闭侧栏').click()
+
+    await button('顺时针旋转').click()
+    await button('适应页面').click()
+    await go(2)
+    await expect(rendered).toBeVisible(timeout)
+    await expect.poll(() => rendered.evaluate(canvas => canvas.height > canvas.width), timeout).toBe(true)
+    const originalWidth = await rendered.evaluate(canvas => canvas.width)
+    await button('放大').click()
+    await expect.poll(() => rendered.evaluate(canvas => canvas.width), timeout).toBeGreaterThan(originalWidth)
+    await button('适应宽度').click()
+    await button('适应页面').click()
+    await go(2)
+    await expect(pageNumber).toHaveValue('2')
+    await button('选区').click()
+    async function selectArea(from, to) {
+      const bounds = await second.locator('.canvasWrapper').boundingBox()
+      await page.mouse.move(bounds.x + bounds.width * from[0], bounds.y + bounds.height * from[1])
+      await page.mouse.down()
+      await page.mouse.move(bounds.x + bounds.width * to[0], bounds.y + bounds.height * to[1], { steps: 8 })
+      await page.mouse.up()
+    }
+    await selectArea([.25, .25], [.55, .42])
+    await expect(page.locator('.pdf-region-outline')).toBeVisible()
+    await button('创建 Card').click()
+    await expect(cardButton(page, 2)).toHaveAttribute('aria-pressed', 'true')
+    const { items } = await cardState(page)
+    const ids = await getPdfs(page)
+    const regionShape = () => page.evaluate(() => window.tlsync?.store.allRecords().filter(({ type }) => type === 'pdf-region') ?? [])
+    await expect.poll(async () => (await regionShape()).length, timeout).toBe(1)
+    const [selected] = await regionShape()
+    expect(selected.props).toMatchObject({ pdfId: ids['Viewer.pdf'], pageNumber: 2, rotation: 180 })
+    for (const [key, value] of Object.entries({ xMin: 275.4, xMax: 459, yMin: 198, yMax: 332.64 })) {
+      expect(Math.abs(selected.props[key] - value)).toBeLessThan(4)
+    }
+    await expect(page.getByLabel('PDF 第 2 页选区')).toBeVisible(timeout)
+    await expect(marker(page)).toHaveCount(1, timeout)
+    await button('插入 PDF 选区').click()
+    await selectArea([.42, .45], [.66, .53])
+    await button('插入当前 Card').click()
+    await expect.poll(async () => (await regionShape()).length, timeout).toBe(2)
+    await expect(marker(page)).toHaveCount(2, timeout)
+    expect((await cardState(page)).items.length).toBe(items.length)
+
+    // Leave while the find controller still has work queued for the previous document.
+    await button('查找 PDF 文字').click()
+    await page.getByRole('searchbox', { name: 'PDF 搜索内容' }).fill('phrase')
+    await selectPdf(page, 'Other')
+    await expect(pageNumber).toHaveValue('1', timeout)
+    await expect(page.locator('.pdf-find')).toHaveCount(0)
+    await go(36)
+    await expect(pageNumber).toHaveValue('36', timeout)
+    await expect(scroll.locator('.page[data-page-number="36"] .canvasWrapper canvas').first()).toBeVisible(timeout)
+    await scroll.hover()
+    await page.mouse.wheel(0, 720)
+    await expect(pageNumber).toHaveValue('37', timeout)
+    expect(await scroll.locator('.canvasWrapper canvas').count()).toBeLessThan(18)
+    await button('缩略图').click()
+    const thumbnails = page.getByRole('complementary', { name: '页面缩略图' })
+    await expect(thumbnails.getByRole('button', { name: '跳至第 37 页' })).toBeAttached()
+    await thumbnails.getByRole('button', { name: '上一组页面' }).click()
+    await expect(thumbnails.getByRole('button', { name: '跳至第 1 页' })).toBeVisible()
+    await button('关闭侧栏').click()
+    const inserted = (await regionShape()).find(({ id }) => id !== selected.id)
+    await page.locator('[data-shape-id="' + inserted.id + '"]').click({ button: 'right', force: true })
+    await page.getByText('跳转到 PDF 来源', { exact: true }).click()
+    await expect(pdfButton(page, 'Viewer')).toHaveAttribute('aria-pressed', 'true')
+    await expect(pageNumber).toHaveValue('2', timeout)
+    const highlight = page.locator('.pdf-jump-highlight')
+    await expect(highlight).toBeVisible(timeout)
+    const jumpBounds = await highlight.boundingBox()
+    const secondBounds = await second.locator('.canvasWrapper').boundingBox()
+    expect(Math.abs((jumpBounds.x - secondBounds.x) / secondBounds.width - .42)).toBeLessThan(.015)
+    expect(Math.abs((jumpBounds.y - secondBounds.y) / secondBounds.height - .45)).toBeLessThan(.015)
+
+    const reading = async (name) => (await sessionsOf(page)).items.find(item => item.name === name).reading[ids['Viewer.pdf']]
+    await expect.poll(async () => (await reading('General'))?.rotation, timeout).toBe(90)
+    await expect.poll(async () => (await reading('General'))?.scale, timeout).toBe('page-fit')
+    await editWorkspace(page, '新建工作区', 'Viewer review')
+    await selectPdf(page, 'Viewer')
+    await expect(pageNumber).toHaveValue('1', timeout)
+    await expect.poll(async () => (await reading('Viewer review'))?.page, timeout).toBe(1)
+    expect((await reading('Viewer review')).rotation).toBeUndefined()
+    const menu = await manage(page)
+    await menu.getByRole('button', { name: 'General', exact: true }).click()
+    await expect(pageNumber).toHaveValue('2', timeout)
+    await page.reload()
+    await expect(pageNumber).toHaveValue('2', timeout)
+    await expect.poll(() => rendered.evaluate(canvas => canvas.height > canvas.width), timeout).toBe(true)
+    await expect(marker(page)).toHaveCount(2, timeout)
+    await expect.poll(async () => (await regionShape()).map(({ props }) => props), timeout).toContainEqual(selected.props)
+
+    const backup = path.join(scratch, 'viewer-preview.zip')
+    await download(page, backup)
+    const restoredContext = await browser.newContext({ viewport: { width: 1480, height: 950 } })
+    try {
+      const restored = await restoredContext.newPage()
+      await restored.goto(preview)
+      await restore(restored, backup)
+      await expect(restored.getByRole('textbox', { name: '页码' })).toHaveValue('2', timeout)
+      await expect(marker(restored)).toHaveCount(2, timeout)
+      const restoredView = (await sessionsOf(restored)).items.find(item => item.name === 'General').reading[ids['Viewer.pdf']]
+      expect(restoredView).toMatchObject({ page: 2, rotation: 90, scale: 'page-fit' })
+    } finally {
+      await restoredContext.close()
+    }
+
+    await page.setViewportSize({ width: 390, height: 740 })
+    await button('缩略图').tap()
+    const pane = await page.locator('#pdf-pane').boundingBox()
+    const sidebar = await page.getByRole('complementary', { name: '页面缩略图' }).boundingBox()
+    expect(sidebar.x + sidebar.width).toBeLessThanOrEqual(pane.x + pane.width)
+    await button('关闭侧栏').tap()
+    await page.goto(origin)
+    await expect(pageNumber).toHaveCount(0)
+    await expect(marker(page)).toHaveCount(2, timeout)
+    await expect.poll(() => rendered.evaluate(canvas => canvas.height > canvas.width), timeout).toBe(true)
+    expect(errors).toEqual([])
+    console.log('PDFViewer preview passed text copy, search, thumbnails, outline, high-DPI zoom, bounded rendering with 48 pages, rotated selection, both Card actions, source jump, independent sessions, ZIP restore, touch and legacy fallback.')
+  } finally {
+    await context.close()
+  }
+}
+
 async function run() {
   if (verifyLegacy) buildOld()
   let dist = verifyLegacy ? oldDist : newDist
@@ -1021,6 +1218,10 @@ async function run() {
   try {
     // Use installed Chrome by default. Pass --chromium to use Playwright's browser.
     browser = await chromium.launch({ channel: process.argv.includes('--chromium') ? undefined : 'chrome' })
+    if (process.argv.includes('--pdf-viewer-only')) {
+      await verifyPdfViewer(browser, origin)
+      return
+    }
     const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1480, height: 950 } })
     const page = await context.newPage()
     const errors = []
@@ -1267,6 +1468,7 @@ async function run() {
     await expect(marker(imported)).toHaveCount(1, timeout)
     expect(errors).toEqual([])
     console.log('Current ZIP round trip passed; forced activation failure preserved data; Card deletion removed only its own references after reload.')
+    await verifyPdfViewer(browser, origin)
   } finally {
     await browser?.close()
     server.close()

@@ -4,15 +4,15 @@ import { readPdf, savePdf } from './pdfStorage'
 
 GlobalWorkerOptions.workerSrc = workerUrl
 
-const assetUrl = new URL(`${import.meta.env.BASE_URL}pdf-assets/`, document.baseURI).href
+export const pdfAssetUrl = new URL(`${import.meta.env.BASE_URL}pdf-assets/`, document.baseURI).href
 
 export function openPdf(bytes: ArrayBuffer) {
   return getDocument({
     data: new Uint8Array(bytes),
-    cMapUrl: `${assetUrl}cmaps/`,
-    standardFontDataUrl: `${assetUrl}standard_fonts/`,
-    wasmUrl: `${assetUrl}wasm/`,
-    iccUrl: `${assetUrl}iccs/`,
+    cMapUrl: `${pdfAssetUrl}cmaps/`,
+    standardFontDataUrl: `${pdfAssetUrl}standard_fonts/`,
+    wasmUrl: `${pdfAssetUrl}wasm/`,
+    iccUrl: `${pdfAssetUrl}iccs/`,
     disableAutoFetch: true,
   })
 }
