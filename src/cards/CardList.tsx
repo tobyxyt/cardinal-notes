@@ -5,16 +5,17 @@ import type { Card } from './cardStorage'
 type CardListProps = {
   hasUnknownReferences: boolean
   items: Card[]
+  available: Card[]
   activeId: string
   onCreate: () => void
   onStartPdfRegion: () => void
   onSelect: (id: string) => void
   onRename: (id: string, title: string) => void
-  onRemove: (card: Card) => void
+  onClose: (cardId: string) => void
 }
 
 export default function CardList({
-  hasUnknownReferences, items, activeId, onCreate, onStartPdfRegion, onSelect, onRename, onRemove,
+  hasUnknownReferences, items, available, activeId, onCreate, onStartPdfRegion, onSelect, onRename, onClose,
 }: CardListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const activeTab = useRef<HTMLDivElement>(null)
@@ -27,6 +28,11 @@ export default function CardList({
       <button type="button" className="tool-button" aria-label="新建 Card" title="新建 Card" onClick={onCreate}>
         <WorkspaceIcon name="plus" />
       </button>
+      <select className="card-open-select library-select" value="" aria-label="打开已有 Card" title="打开已有 Card"
+        disabled={!available.length} onChange={(event) => { if (event.currentTarget.value) onSelect(event.currentTarget.value) }}>
+        <option value="">打开 Card</option>
+        {available.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
+      </select>
       <div className="tab-strip" role="group" aria-label="Card 列表">
         {items.map((card) => (
           <div key={card.id} className="pane-tab" data-active={card.id === activeId ? '' : undefined}
@@ -66,14 +72,14 @@ export default function CardList({
                 {card.title}
               </button>
             )}
-            <button type="button" className="tab-close" aria-label={`删除 ${card.title}`} title="删除 Card"
-              onClick={() => onRemove(card)}>
+            <button type="button" className="tab-close" aria-label={`关闭 ${card.title}`} title="关闭标签"
+              onClick={() => onClose(card.id)}>
               <WorkspaceIcon name="close" />
             </button>
           </div>
         ))}
       </div>
-      <button type="button" className="tool-button" aria-label="插入 PDF 选区" title="插入 PDF 选区"
+      <button type="button" className="tool-button" aria-label="插入 PDF 选区" title="插入 PDF 选区" disabled={!activeId}
         onClick={onStartPdfRegion}>
         <WorkspaceIcon name="insert" />
       </button>

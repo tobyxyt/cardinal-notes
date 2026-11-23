@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { READING_CHECKPOINT, type PdfView } from '../workspace/workspaceStorage'
 import WorkspaceIcon from '../WorkspaceIcon'
 import { AnnotationEditorType, AnnotationMode } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { EventBus, PDFViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
@@ -10,6 +11,9 @@ import { usePdfRegionSelection } from './usePdfRegionSelection'
 
 type PdfReaderProps = {
   id: string
+  workspaceId: string
+  initialView?: PdfView
+  onReadingChange: (pdfId: string, view: PdfView) => void
   selectionMode: PdfRegionMode | null
   onStartSelection: () => void
   onCancelSelection: () => void
@@ -28,13 +32,14 @@ function tapAction(event: PointerEvent<HTMLButtonElement>, action: () => void) {
 }
 
 export default function PdfReader({
-  id, selectionMode, onStartSelection, onCancelSelection, onConfirmRegion, references, destination, onOpenCard,
+  id, workspaceId, initialView, onReadingChange, selectionMode, onStartSelection, onCancelSelection, onConfirmRegion, references, destination, onOpenCard,
 }: PdfReaderProps) {
   const container = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<PDFViewer | null>(null)
   const [scale, setScale] = useState<number | null>(null)
   const [error, setError] = useState('')
   const confirmedRegion = useRef<PdfRegion | null>(null)
+  const initial = useRef(initialView)
 
   useEffect(() => {
     const element = container.current!
@@ -60,7 +65,41 @@ export default function PdfReader({
       viewer.currentScaleValue = 'page-width'
     }
 
-    eventBus.on('pagesinit', fitWidth, { signal })
+    const saved = initial.current
+    let restored = !saved
+    let latest: PdfView | undefined
+    let saveTimer: number | undefined
+    function flushView() {
+      window.clearTimeout(saveTimer)
+      saveTimer = undefined
+      if (latest) onReadingChange(id, latest)
+    }
+    function checkpoint() {
+      if (!latest) return
+      try {
+        sessionStorage.setItem(READING_CHECKPOINT, JSON.stringify({ workspaceId, pdfId: id, view: latest }))
+      } catch { /* the regular workspace save still applies */ }
+      flushView()
+    }
+    window.addEventListener('pagehide', checkpoint, { signal })
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') checkpoint()
+    }, { signal })
+    eventBus.on('updateviewarea', ({ location }: { location: { pageNumber: number; left: number; top: number } }) => {
+      if (!restored) return
+      latest = {
+        page: location.pageNumber,
+        left: Math.round(location.left),
+        top: Math.round(location.top),
+        scale: viewer.currentScaleValue === 'page-width' ? 'page-width' : viewer.currentScale,
+        at: Date.now(),
+      }
+      if (saveTimer === undefined) saveTimer = window.setTimeout(flushView, 650)
+    }, { signal })
+    eventBus.on('pagesinit', () => {
+      if (saved && typeof saved.scale === 'number') viewer.currentScale = saved.scale
+      else fitWidth()
+    }, { signal })
     eventBus.on('scalechanging', ({ scale }: { scale: number }) => setScale(scale), { signal })
     eventBus.on('pagerendered', ({ error, pageNumber }: { error?: Error; pageNumber: number }) => {
       if (error) setError(`无法显示第 ${pageNumber} 页。`)
@@ -83,6 +122,14 @@ export default function PdfReader({
         if (signal.aborted) return
         viewer.setDocument(pdf)
         await viewer.pagesPromise
+        if (signal.aborted || !saved) return
+        if (saved.page <= pdf.numPages) {
+          viewer.scrollPageIntoView({
+            pageNumber: saved.page, destArray: [null, { name: 'XYZ' }, saved.left, saved.top, null],
+            ignoreDestinationZoom: true, allowNegativeOffset: true,
+          })
+        }
+        restored = true
       } catch (error) {
         if (!signal.aborted) {
           console.error('Could not open the PDF', error)
@@ -93,14 +140,15 @@ export default function PdfReader({
     void showDocument()
 
     return () => {
-      viewer.setDocument(null)
+      flushView()
       controller.abort()
+      viewer.setDocument(null)
       resize.disconnect()
       window.clearTimeout(fitTimer)
       viewerRef.current = null
       source.release()
     }
-  }, [id])
+  }, [id, workspaceId])
 
   const { region, outline } = usePdfRegionSelection(id, selectionMode, container, viewerRef)
 

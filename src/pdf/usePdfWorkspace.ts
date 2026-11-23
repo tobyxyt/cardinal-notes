@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react'
 import type { PdfRegion } from './pdfRegion'
-import { listPdfs, readActivePdfId, readPdf, saveActivePdfId, type PdfFile } from './pdfStorage'
+import type { Tabs } from '../workspace/workspaceStorage'
+import { listPdfs, readPdf, type PdfFile } from './pdfStorage'
 
-const PDFS_IMPORTED = 'cardinal-notes:pdfs-imported'
+export const PDFS_IMPORTED = 'cardinal-notes:pdfs-imported'
 
 export function usePdfWorkspace(
+  tabs: Tabs,
+  onOpen: (id: string) => void,
+  onClose: (id: string) => void,
   sourceRequest: PdfRegion | null,
   onCancelSourceRequest: () => void,
   onImportingChange: (importing: boolean) => void,
 ) {
   const [files, setFiles] = useState<PdfFile[]>([])
-  const [tabs, setTabs] = useState<{ ids: string[]; activeId: string } | null>(null)
-  const activeId = tabs?.activeId ?? ''
+  const [filesReady, setFilesReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState('')
@@ -25,13 +28,8 @@ export function usePdfWorkspace(
       try {
         const library = await listPdfs()
         if (cancelled) return
-        const previous = readActivePdfId()
         setFiles(library)
-        setTabs((current) => {
-          if (current) return current
-          const first = library.find(({ id }) => id === previous)?.id ?? library[0]?.id
-          return { ids: first ? [first] : [], activeId: first ?? '' }
-        })
+        setFilesReady(true)
       } catch (error) {
         if (!cancelled) {
           console.error('Could not load the PDF list', error)
@@ -71,7 +69,7 @@ export function usePdfWorkspace(
             setSourceError('源 PDF 中找不到该选区的页码。')
             return
           }
-          activatePdf(region.pdfId)
+          onOpen(region.pdfId)
           setDestination(region)
         } finally {
           source.release()
@@ -85,15 +83,6 @@ export function usePdfWorkspace(
     return () => { cancelled = true }
   }, [loading, sourceRequest])
 
-  function activatePdf(id: string) {
-    setTabs((current) => {
-      if (current?.activeId === id) return current
-      const ids = current?.ids ?? []
-      return { ids: ids.includes(id) ? ids : [...ids, id], activeId: id }
-    })
-    saveActivePdfId(id)
-  }
-
   function clearSourceRequest() {
     onCancelSourceRequest()
     setDestination(null)
@@ -102,18 +91,12 @@ export function usePdfWorkspace(
 
   function selectPdf(id: string) {
     clearSourceRequest()
-    activatePdf(id)
+    onOpen(id)
   }
 
   function closePdf(id: string) {
-    if (!tabs?.ids.includes(id)) return
-    const ids = tabs.ids.filter((item) => item !== id)
-    const next = id === activeId ? ids[Math.min(tabs.ids.indexOf(id), ids.length - 1)] ?? '' : activeId
-    if (id === activeId) {
-      clearSourceRequest()
-      saveActivePdfId(next)
-    }
-    setTabs({ ids, activeId: next })
+    if (id === tabs.activeId) clearSourceRequest()
+    onClose(id)
   }
 
   async function importFiles(selected: File[]) {
@@ -151,9 +134,10 @@ export function usePdfWorkspace(
   }
 
   const filesById = new Map(files.map((file) => [file.id, file]))
-  const openFiles = (tabs?.ids ?? []).flatMap((id) => filesById.get(id) ?? [])
+  const openFiles = tabs.ids.flatMap((id) => filesById.get(id) ?? [])
+  const activeId = filesById.has(tabs.activeId) ? tabs.activeId : ''
   return {
-    files, openFiles, activeId, loading, importing, notice, errors, sourceError, destination,
+    files, filesReady, openFiles, activeId, loading, importing, notice, errors, sourceError, destination: destination?.pdfId === activeId ? destination : null,
     selectPdf, closePdf, importFiles,
   }
 }

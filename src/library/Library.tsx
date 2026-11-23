@@ -15,12 +15,13 @@ type FolderOption = Folder & { path: string }
 type FolderForm = { id?: string; parentId: string | null; name: string }
 
 function DocumentRow({
-  document, linked, unknown, onOpen, actions, path,
+  document, linked, unknown, onOpen, onDelete, actions, path,
 }: {
   document: DocumentLabel
   linked: DocumentLabel[]
   unknown: boolean
   onOpen: (document: LibraryDocument) => void
+  onDelete: (document: DocumentLabel) => void
   actions?: React.ReactNode
   path?: string
 }) {
@@ -36,6 +37,8 @@ function DocumentRow({
         </button>
         {path && <span className="library-path" title={path}>{path}</span>}
         {actions}
+        <button type="button" className="tool-button" aria-label={'永久删除 ' + document.title} title="永久删除文档"
+          onClick={() => onDelete(document)}><WorkspaceIcon name="trash" /></button>
       </div>
       <details className="library-relations">
         <summary>{relation}<span className="library-count">{count}</span></summary>
@@ -74,7 +77,7 @@ function FolderSelect({
 }
 
 export default function Library({
-  files, cards, references, hasUnknownReferences, loading, importDisabled, importStatus, pdfErrors, onImport, onOpenDocument,
+  files, cards, references, hasUnknownReferences, loading, importDisabled, importStatus, pdfErrors, onImport, onOpenDocument, onDeleteDocument,
 }: {
   files: PdfFile[]
   cards: Card[]
@@ -86,6 +89,7 @@ export default function Library({
   pdfErrors: string
   onImport: () => void
   onOpenDocument: (document: LibraryDocument) => void
+  onDeleteDocument: (document: DocumentLabel) => void
 }) {
   const [view, setView] = useState<'pdf' | 'card'>('pdf')
   const [search, setSearch] = useState({ pdf: '', card: '' })
@@ -190,6 +194,7 @@ export default function Library({
         document={{ kind: 'pdf', id: file.id, title: file.name }}
         linked={[...(linkedCards.get(file.id) ?? [])].map((id) => ({ kind: 'card', id, title: cardsById.get(id)!.title }))}
         onOpen={onOpenDocument}
+        onDelete={onDeleteDocument}
         unknown={unknown}
         path={showPath ? paths.get(folderId ?? '') ?? '根目录' : undefined}
         actions={<FolderSelect label={'移动 PDF ' + file.name} value={folderId} options={options}
@@ -325,7 +330,7 @@ export default function Library({
           <section aria-label="All Cards">
             <ul className="library-tree">
               {cardResults.map(({ id, title }) => (
-                <DocumentRow key={id} document={{ kind: 'card', id, title }} onOpen={onOpenDocument} unknown={unknown}
+                <DocumentRow key={id} document={{ kind: 'card', id, title }} onOpen={onOpenDocument} onDelete={onDeleteDocument} unknown={unknown}
                   linked={[...(linkedPdfs.get(id) ?? [])].map((pdfId) => ({ kind: 'pdf', id: pdfId, title: pdfsById.get(pdfId)!.name }))} />
               ))}
             </ul>

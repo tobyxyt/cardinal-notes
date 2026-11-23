@@ -44,15 +44,16 @@ function buildOld() {
   execFileSync(process.execPath, [path.join(target, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], { cwd: old })
 }
 
-function makePdf(label) {
+function makePdf(label, multiple = false) {
   const stream = '0.0 0.4 0.7 rg 40 650 110 110 re f\nBT /F1 18 Tf 100 600 Td (' + label + ') Tj ET'
   const parts = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Count 1 /Kids [3 0 R] >>',
+    multiple ? '<< /Type /Pages /Count 2 /Kids [3 0 R 6 0 R] >>' : '<< /Type /Pages /Count 1 /Kids [3 0 R] >>',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     '<< /Length ' + Buffer.byteLength(stream) + ' >>\nstream\n' + stream + '\nendstream',
   ]
+  if (multiple) parts.push(parts[2])
   const offsets = []
   let pdf = '%PDF-1.4\n'
   for (const [index, part] of parts.entries()) {
@@ -60,8 +61,8 @@ function makePdf(label) {
     pdf += (index + 1) + ' 0 obj\n' + part + '\nendobj\n'
   }
   const xref = Buffer.byteLength(pdf)
-  pdf += 'xref\n0 6\n0000000000 65535 f \n' + offsets.map(n => String(n).padStart(10, '0') + ' 00000 n \n').join('')
-  return Buffer.from(pdf + 'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n')
+  pdf += 'xref\n0 ' + (parts.length + 1) + '\n0000000000 65535 f \n' + offsets.map(n => String(n).padStart(10, '0') + ' 00000 n \n').join('')
+  return Buffer.from(pdf + 'trailer\n<< /Size ' + (parts.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n')
 }
 
 // The pinned SDK exposes its local client for diagnostics. Test fixtures use its live Store;
@@ -82,7 +83,8 @@ async function cardState(page) {
 
 async function getPdfs(page) {
   return page.evaluate(() => new Promise((resolve, reject) => {
-    const req = indexedDB.open('cardinal-notes:pdfs')
+    const dataset = localStorage.getItem('cardinal-notes:active-dataset')
+    const req = indexedDB.open(dataset ? 'cardinal-notes:restore:' + dataset + ':pdfs' : 'cardinal-notes:pdfs')
     req.onsuccess = () => {
       const db = req.result
       const get = db.transaction('metadata').objectStore('metadata').getAll()
@@ -226,6 +228,7 @@ async function verifyLayout(page, browser, origin) {
   await page.getByRole('button', { name: '取消选区' }).click()
   await stillMounted()
   await modeButton('仅 PDF').click()
+  await mode('pdf')
   expect(await page.evaluate(() => window.layoutError)).toBeUndefined()
   await page.reload()
   await mode('pdf')
@@ -473,7 +476,7 @@ async function writeInvalidLibraryBackup(input, output, change) {
       const blob = await entry.getData(new BlobWriter(), { useWebWorkers: false })
       if (entry.filename === 'backup.json') {
         const manifest = JSON.parse(await blob.text())
-        expect(manifest.version).toBe(2)
+        expect(manifest.version).toBe(3)
         change(manifest.library)
         await writer.add(entry.filename, new TextReader(JSON.stringify(manifest)))
       } else await writer.add(entry.filename, new BlobReader(blob))
@@ -482,6 +485,167 @@ async function writeInvalidLibraryBackup(input, output, change) {
   } finally {
     await reader.close()
   }
+}
+
+const workspaceMenu = (page) => page.getByRole('group', { name: '工作区管理' })
+const workspaceName = (page, name) => page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name, exact: true })
+
+async function manage(page) {
+  await page.getByRole('button', { name: '管理工作区', exact: true }).click()
+  const menu = workspaceMenu(page)
+  await expect(menu).toBeVisible()
+  return menu
+}
+
+async function switchWorkspace(page, name) {
+  const menu = await manage(page)
+  await menu.getByRole('button', { name, exact: true }).click()
+  await expect(workspaceName(page, name)).toHaveAttribute('aria-current', 'page')
+}
+
+async function editWorkspace(page, action, name) {
+  const menu = await manage(page)
+  await menu.getByRole('button', { name: action, exact: true }).click()
+  await menu.getByRole('textbox', { name: '工作区名称' }).fill(name)
+  await menu.getByRole('button', { name: '保存工作区' }).click()
+  await expect(workspaceName(page, name)).toHaveAttribute('aria-current', 'page')
+}
+
+async function sessionsOf(page) {
+  return page.evaluate(() => {
+    const dataset = localStorage.getItem('cardinal-notes:active-dataset')
+    const prefix = dataset ? 'cardinal-notes:restore:' + dataset + ':' : 'cardinal-notes:'
+    return JSON.parse(localStorage.getItem(prefix + 'workspaces'))
+  })
+}
+
+async function activateExistingCard(page, title) {
+  await page.getByRole('combobox', { name: '打开已有 Card' }).selectOption({ label: title })
+  await expect(page.getByRole('group', { name: 'Card 列表' }).getByRole('button', { name: title, exact: true }))
+    .toHaveAttribute('aria-pressed', 'true')
+}
+
+async function verifySessions(page, scratch) {
+  await editWorkspace(page, '新建工作区', 'Reading')
+  await expect(page.locator('.pdf-file-list .pane-tab')).toHaveCount(0)
+  await expect(page.locator('.card-tabs .pane-tab')).toHaveCount(0)
+  await expect(page.locator('canvas.tl-canvas')).toHaveCount(0)
+  await page.getByLabel('选择 PDF 文件').setInputFiles({
+    name: 'Study.pdf', mimeType: 'application/pdf', buffer: makePdf('Study', true),
+  })
+  await expect(pdfButton(page, 'Study')).toHaveAttribute('aria-pressed', 'true')
+  await activateExistingCard(page, 'Card 1')
+  await expectImage(page)
+  await page.getByRole('separator').press('ArrowRight')
+  await page.getByRole('separator').press('ArrowRight')
+  await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '60')
+  await page.getByRole('button', { name: '放大', exact: true }).click()
+  const scroll = page.locator('.pdf-scroll')
+  await expect(scroll.locator('.page')).toHaveCount(2)
+  await scroll.evaluate((node) => { node.scrollTop += node.querySelector('[data-page-number="2"]').offsetTop + 130 })
+  const pdfIds = await getPdfs(page)
+  const studyId = pdfIds['Study.pdf']
+  const reading = async () => (await sessionsOf(page)).items.find(({ name }) => name === 'Reading')
+  await expect.poll(async () => (await reading()).reading[studyId]?.page, timeout).toBe(2)
+  const atTwo = (await reading()).reading[studyId]
+  const zoom = await page.getByLabel('缩放比例').textContent()
+  expect(atTwo.scale).not.toBe('page-width')
+  await page.locator('[data-shape-id="shape:first-b"]').click({ button: 'right', force: true })
+  await page.getByText('跳转到 PDF 来源', { exact: true }).click()
+  await expect(workspaceName(page, 'Reading')).toHaveAttribute('aria-current', 'page')
+  await expect(pdfButton(page, 'Beta')).toHaveAttribute('aria-pressed', 'true')
+  await selectPdf(page, 'Study')
+  await editWorkspace(page, '新建工作区', 'Review')
+  await selectPdf(page, 'Alpha')
+  await cardsHandle(page).click()
+  await cardsPanel(page).getByRole('button', { name: 'Card 2', exact: true }).click()
+  await cardsHandle(page).press('Escape')
+  await expect(cardButton(page, 2)).toHaveAttribute('aria-pressed', 'true')
+  await selectPdf(page, 'Study')
+  const review = async () => (await sessionsOf(page)).items.find(({ name }) => name === 'Review')
+  await expect.poll(async () => (await review()).reading[studyId]?.page, timeout).toBe(1)
+  await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '50')
+  await activateExistingCard(page, 'Card 1')
+  await expectImage(page)
+  await page.getByRole('button', { name: '关闭 Card 1', exact: true }).click()
+  await expect(cardButton(page, 1)).toHaveCount(0)
+  await expect(cardButton(page, 2)).toHaveAttribute('aria-pressed', 'true')
+  await switchWorkspace(page, 'Reading')
+  await expect(cardButton(page, 1)).toHaveAttribute('aria-pressed', 'true')
+  await expect(pdfButton(page, 'Alpha')).toHaveCount(0)
+  await expect(pdfButton(page, 'Study')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '60')
+  await expect(page.getByLabel('缩放比例')).toHaveText(zoom)
+  await expect.poll(() => scroll.evaluate((node) => node.scrollTop), timeout).toBeGreaterThan(500)
+  await page.reload()
+  await expect(workspaceName(page, 'Reading')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '60')
+  await expect(page.getByLabel('缩放比例')).toHaveText(zoom)
+  await expect.poll(() => scroll.evaluate((node) => node.scrollTop), timeout).toBeGreaterThan(500)
+  await expectImage(page)
+
+  await switchWorkspace(page, 'Review')
+  await editWorkspace(page, '重命名工作区', 'Revision')
+  const library = await openLibrary(page)
+  await library.getByRole('button', { name: 'Beta.pdf', exact: true }).click()
+  await expect(workspaceName(page, 'General')).toHaveAttribute('aria-current', 'page')
+  await expect(pdfButton(page, 'Beta')).toHaveAttribute('aria-pressed', 'true')
+  await switchWorkspace(page, 'Revision')
+  page.once('dialog', dialog => dialog.accept())
+  await (await manage(page)).getByRole('button', { name: '清空打开的标签' }).click()
+  await expect(page.locator('.pdf-file-list .pane-tab')).toHaveCount(0)
+  await expect(page.locator('.card-tabs .pane-tab')).toHaveCount(0)
+  const downloadEvent = page.waitForEvent('download', timeout)
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('button', { name: '导出备份', exact: true }).click()
+  await (await downloadEvent).saveAs(path.join(scratch, 'from-empty-workspace.zip'))
+  await expect(page.getByText('备份已生成，下载已开始。')).toBeVisible()
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('Library 文档会保留')
+    await dialog.accept()
+  })
+  await (await manage(page)).getByRole('button', { name: '删除工作区' }).click()
+  await expect(workspaceName(page, 'General')).toHaveAttribute('aria-current', 'page')
+  await expectImage(page)
+  expect((await sessionsOf(page)).items.map(({ name }) => name)).toEqual(['General', 'Reading'])
+
+  // Put a dispensable PDF and Card in both workspaces for the post-restore cleanup check.
+  await page.getByLabel('选择 PDF 文件').setInputFiles({
+    name: 'Temporary.pdf', mimeType: 'application/pdf', buffer: makePdf('Temporary'),
+  })
+  await expect(pdfButton(page, 'Temporary')).toHaveAttribute('aria-pressed', 'true')
+  await activateExistingCard(page, 'Card 3')
+  await switchWorkspace(page, 'Reading')
+  await selectPdf(page, 'Temporary')
+  await activateExistingCard(page, 'Card 3')
+  await selectPdf(page, 'Study')
+  await activateExistingCard(page, 'Card 1')
+  await switchWorkspace(page, 'General')
+  await selectPdf(page, 'Beta')
+  await activateExistingCard(page, 'Card 1')
+  console.log('Workspace creation, independent tabs and PDF position, reload, shared canvas, clear, deletion, and empty backup passed.')
+}
+
+async function verifyWorkspaceCleanup(page) {
+  const library = await openLibrary(page)
+  page.once('dialog', dialog => dialog.accept())
+  await library.getByRole('button', { name: '永久删除 Beta.pdf', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('仍被 Card 引用', timeout)
+  await page.getByRole('button', { name: '关闭错误' }).click()
+  await expect(library.getByRole('button', { name: 'Beta.pdf', exact: true })).toBeVisible()
+  const temporary = (await getPdfs(page))['Temporary.pdf']
+  const card = (await cardState(page)).items.find(({ title }) => title === 'Card 3').id
+  page.once('dialog', dialog => dialog.accept())
+  await library.getByRole('button', { name: '永久删除 Temporary.pdf', exact: true }).click()
+  await expect(library.getByRole('button', { name: 'Temporary.pdf', exact: true })).toHaveCount(0)
+  await library.getByRole('button', { name: 'All Cards', exact: true }).click()
+  page.once('dialog', dialog => dialog.accept())
+  await library.getByRole('button', { name: '永久删除 Card 3', exact: true }).click()
+  await expect(library.getByRole('button', { name: 'Card 3', exact: true })).toHaveCount(0)
+  await expect.poll(async () => (await sessionsOf(page)).items.every((session) =>
+    !session.pdf.ids.includes(temporary) && !session.card.ids.includes(card) && !(temporary in session.reading)), timeout).toBe(true)
+  await openGeneral(page)
+  console.log('Permanent Library deletions pruned every workspace and protected referenced PDF sources.')
 }
 
 async function run() {
@@ -595,7 +759,8 @@ async function run() {
 
     const peer = await context.newPage()
     await peer.goto(origin)
-    await cardButton(peer, 1).click()
+    await editWorkspace(peer, '新建工作区', 'Peer')
+    await activateExistingCard(peer, 'Card 1')
     await waitEditor(peer, first.persistenceKey)
     await expect.poll(() => page.evaluate(key => localStorage.getItem(key), cachePrefix + first.persistenceKey), timeout).toBe(null)
     await putShapes(peer, pdfIds['Alpha.pdf'], [{ id: 'peer-a', regionX: 330, index: 'a4' }])
@@ -644,10 +809,12 @@ async function run() {
     await expectImage(restored)
     expect(await restored.evaluate(() => window.tlsync.store.get('shape:photo').x)).toBe(390)
     await verifyLibrary(restored)
+    await verifySessions(restored, scratch)
     const savedLibrary = await storedLibrary(restored)
     await restored.getByRole('button', { name: '仅 PDF', exact: true }).click()
     await expect(restored.locator('#card-pane')).toBeHidden()
     await download(restored, newZip)
+    const savedSessions = await sessionsOf(restored)
     await expect(restored.locator('.split-workspace')).toHaveAttribute('data-mode', 'pdf')
     console.log('Backup without folders restored into a blank context; IDs, PDF links, image bytes and reload were verified.')
 
@@ -656,6 +823,16 @@ async function run() {
     await imported.goto(origin)
     await waitEditor(imported)
     await restore(imported, newZip)
+    const restoredSessions = await sessionsOf(imported)
+    const sessionTabs = ({ items }) => items.map(({ id, name, pdf, card, layout }) => ({ id, name, pdf, card, layout }))
+    expect(restoredSessions.activeId).toBe(savedSessions.activeId)
+    expect(sessionTabs(restoredSessions)).toEqual(sessionTabs(savedSessions))
+    expect(restoredSessions.items.find(({ name }) => name === 'Reading').reading).toEqual(
+      savedSessions.items.find(({ name }) => name === 'Reading').reading)
+    await switchWorkspace(imported, 'Reading')
+    await expect(pdfButton(imported, 'Study')).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(() => imported.locator('.pdf-scroll').evaluate(node => node.scrollTop), timeout).toBeGreaterThan(500)
+    await switchWorkspace(imported, 'General')
     await expectImage(imported)
     await expect(marker(imported)).toHaveCount(1, timeout)
     expect(await imported.evaluate(() => ({
@@ -684,7 +861,7 @@ async function run() {
     await expect(imported.getByRole('alert')).toContainText('无效的文件夹或 PDF 位置', timeout)
     expect(await imported.evaluate(() => localStorage.getItem('cardinal-notes:active-dataset'))).toBe(pointer)
     await expectImage(imported)
-    console.log('ZIP v2 restored folder IDs and placements. Malformed folder hierarchy was rejected before staging.')
+    console.log('ZIP v3 restored folder IDs and placements. Malformed folder hierarchy was rejected before staging.')
     await imported.evaluate(() => {
       const set = Storage.prototype.setItem
       Storage.prototype.setItem = function (key, value) {
@@ -699,10 +876,14 @@ async function run() {
     await imported.reload()
     await expectImage(imported)
     await expect(marker(imported)).toHaveCount(1, timeout)
+    await verifyWorkspaceCleanup(imported)
     await selectPdf(imported, 'Alpha')
     await expect(marker(imported)).toHaveCount(2, timeout)
     imported.once('dialog', dialog => dialog.accept())
-    await imported.getByRole('button', { name: '删除 Card 1', exact: true }).click()
+    const deletionLibrary = await openLibrary(imported)
+    await deletionLibrary.getByRole('button', { name: 'All Cards', exact: true }).click()
+    await deletionLibrary.getByRole('button', { name: '永久删除 Card 1', exact: true }).click()
+    await openGeneral(imported)
     await expect(marker(imported)).toHaveCount(1, timeout)
     await imported.reload()
     await expect(marker(imported)).toHaveCount(1, timeout)

@@ -9,7 +9,7 @@ const RESTORED = 'cardinal-notes:restore-completed'
 
 type Props = {
   disabled: boolean
-  captureCanvas: () => LiveCanvas | null
+  captureCanvas: () => LiveCanvas | null | undefined
   setBusy: (busy: boolean) => void
   setPaused: (paused: boolean) => void
 }
@@ -38,13 +38,13 @@ export default function BackupControls({ disabled, captureCanvas, setBusy, setPa
     try {
       const backup = await import('./workspaceBackup')
       const data = file ? await backup.readBackup(file) : null
-      if (data && !window.confirm('恢复会替换当前的全部 Card 和 PDF。确认继续吗？')) {
+      if (data && !window.confirm('恢复会替换当前的 Workspace、Card 和 PDF。确认继续吗？')) {
         setMessage('已取消恢复。')
         return
       }
       const live = captureCanvas()
-      if (!live) throw new Error('当前画布还未准备好，请稍后重试。')
-      await verifySavedCanvas(live)
+      if (live === undefined) throw new Error('当前画布还未准备好，请稍后重试。')
+      if (live) await verifySavedCanvas(live)
 
       flushSync(() => setPaused(true))
       await waitForCanvasSaves()

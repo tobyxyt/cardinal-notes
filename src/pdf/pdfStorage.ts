@@ -12,14 +12,6 @@ export function readActivePdfId() {
   return localStorage.getItem(ACTIVE_PDF)
 }
 
-export function saveActivePdfId(id: string) {
-  try {
-    localStorage.setItem(ACTIVE_PDF, id)
-  } catch {
-    // The last selection is optional. The file is already in IndexedDB.
-  }
-}
-
 export function pdfDatabaseName(dataset?: string) {
   return datasetKey('pdfs', dataset)
 }
@@ -98,6 +90,17 @@ export async function readPdf(id: string): Promise<Blob> {
   const blob = await requestResult<Blob | undefined>(db.transaction('files').objectStore('files').get(id))
   if (!blob) throw new Error('PDF 文件不在本地存储中。')
   return blob
+}
+
+export async function deletePdf(id: string) {
+  const db = await openDatabase()
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(['metadata', 'files'], 'readwrite')
+    transaction.oncomplete = () => resolve()
+    transaction.onabort = () => reject(transaction.error ?? new Error('无法删除 PDF。'))
+    transaction.objectStore('metadata').delete(id)
+    transaction.objectStore('files').delete(id)
+  })
 }
 
 export async function savePdf(name: string, hash: string, blob: Blob) {

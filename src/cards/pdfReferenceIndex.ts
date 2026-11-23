@@ -57,6 +57,17 @@ export function readReferences(key: string, signal: AbortSignal) {
   })
 }
 
+export function readSettledReferences(key: string) {
+  return navigator.locks.request(writerLock(key), { signal: AbortSignal.timeout(5000) }, async () => {
+    return (await readCanvasShapes(key)).flatMap((record) => regionIn(record) ?? [])
+  }).catch((cause) => {
+    if (cause instanceof DOMException && cause.name === 'TimeoutError') {
+      throw new Error('Card 画布仍在保存，请稍后重试。')
+    }
+    throw cause
+  })
+}
+
 export function allowReferenceWrites(key: string, ready: () => void, failed: () => void) {
   const abort = new AbortController()
   const channel = new BroadcastChannel(REFERENCE_CHANGE)

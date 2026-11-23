@@ -4,13 +4,15 @@ import { loadCards, type CardListState } from '../cards/cardStorage'
 import { PdfRegionShapeUtil } from '../cards/PdfRegionShape'
 import { ACTIVE_DATASET_KEY, datasetKey, readActiveDataset, workspaceDataset } from '../dataset'
 import { openPdf, pdfHash } from '../pdf/pdfDocument'
-import { listPdfs, readActivePdfId, readPdf, removeStagedPdfs, writeRestoredPdfs, type PdfFile } from '../pdf/pdfStorage'
+import { listPdfs, readPdf, removeStagedPdfs, writeRestoredPdfs, type PdfFile } from '../pdf/pdfStorage'
 import { matchesLiveCanvas, readCanvas, removeStagedCanvas, writeCanvas, type CanvasData, type LiveCanvas } from '../cards/canvasPersistence'
 
 import { EMPTY_LIBRARY, LIBRARY_KEY, libraryKey, readLibrary, validateLibrary, type LibraryData } from '../library/libraryStorage'
 
+import { pruneDocuments, readWorkspaces, seedWorkspaces, validateWorkspaces, WORKSPACES_KEY, type WorkspaceData } from '../workspace/workspaceStorage'
+
 const FORMAT = 'cardinal-notes-backup'
-const VERSION = 2
+const VERSION = 3
 const TLDRAW_VERSION = '5.6.2'
 const LIMIT = 512 * 1024 * 1024
 const JSON_LIMIT = 32 * 1024 * 1024
@@ -22,8 +24,7 @@ type Manifest = {
   format: typeof FORMAT
   version: number
   tldrawVersion: string
-  activeCardId: string
-  activePdfId: string | null
+  workspaces: WorkspaceData
   cards: { id: string; title: string; canvas: boolean }[]
   pdfs: PdfFile[]
   library: LibraryData
@@ -46,10 +47,10 @@ function check(condition: unknown, message: string): asserts condition {
 }
 
 function checkManifest(value: unknown): Manifest {
-  const manifest = value as Manifest | null
+  const manifest = value as (Manifest & { activeCardId?: string; activePdfId?: string | null }) | null
   check(manifest?.format === FORMAT, '这不是 Cardinal Notes 备份。')
-  check((manifest.version === 1 || manifest.version === VERSION) && manifest.tldrawVersion === TLDRAW_VERSION, '备份格式版本不兼容。')
-  check(Array.isArray(manifest.cards) && manifest.cards.length > 0 && Array.isArray(manifest.pdfs), '备份缺少 Card 或 PDF 清单。')
+  check((manifest.version === 1 || manifest.version === 2 || manifest.version === VERSION) && manifest.tldrawVersion === TLDRAW_VERSION, '备份格式版本不兼容。')
+  check(Array.isArray(manifest.cards) && Array.isArray(manifest.pdfs), '备份缺少 Card 或 PDF 清单。')
 
   const cards = new Set<string>()
   for (const card of manifest.cards) {
@@ -57,7 +58,6 @@ function checkManifest(value: unknown): Manifest {
       typeof card.title === 'string' && card.title.trim() && typeof card.canvas === 'boolean', 'Card 清单无效或存在重复 ID。')
     cards.add(card.id)
   }
-  check(cards.has(manifest.activeCardId), '当前 Card 不在备份清单中。')
 
   const pdfIds = new Set<string>()
   const hashes = new Set<string>()
@@ -68,9 +68,22 @@ function checkManifest(value: unknown): Manifest {
     pdfIds.add(file.id)
     hashes.add(file.hash)
   }
-  check(manifest.activePdfId === null || pdfIds.has(manifest.activePdfId), '当前 PDF 不在备份清单中。')
   const library = manifest.version === 1 ? EMPTY_LIBRARY : validateLibrary(manifest.library, pdfIds)
-  return { ...manifest, library }
+  let workspaces: WorkspaceData
+  if (manifest.version === VERSION) {
+    workspaces = validateWorkspaces(manifest.workspaces)
+    for (const session of workspaces.items) {
+      check(session.card.ids.every((id) => cards.has(id)) && session.pdf.ids.every((id) => pdfIds.has(id)),
+        '工作区引用的文档不在备份清单中。')
+    }
+  } else {
+    const activeCardId = manifest.activeCardId
+    const activePdfId = manifest.activePdfId
+    check(typeof activeCardId === 'string' && cards.has(activeCardId), '当前 Card 不在备份清单中。')
+    check(activePdfId === null || (typeof activePdfId === 'string' && pdfIds.has(activePdfId)), '当前 PDF 不在备份清单中。')
+    workspaces = seedWorkspaces({ ids: [...cards], activeId: activeCardId }, activePdfId)
+  }
+  return { ...manifest, library, workspaces }
 }
 
 async function verifyPdf(file: PdfFile, blob: Blob) {
@@ -179,17 +192,19 @@ function verifyCanvas(canvas: CanvasData, title: string, pages: Map<string, numb
   }
 }
 
-export async function exportWorkspace(live: LiveCanvas) {
+export async function exportWorkspace(live: LiveCanvas | null) {
   const state = loadCards()
   const pdfs = await listPdfs()
-  const chosenPdf = readActivePdfId()
+  const workspaces = await navigator.locks.request(WORKSPACES_KEY, () => pruneDocuments(
+    pruneDocuments(readWorkspaces(), 'card', new Set(state.items.map(({ id }) => id))),
+    'pdf', new Set(pdfs.map(({ id }) => id)),
+  ))
   const library = await navigator.locks.request(LIBRARY_KEY, readLibrary)
   const manifest: Manifest = {
     format: FORMAT,
     version: VERSION,
     tldrawVersion: TLDRAW_VERSION,
-    activeCardId: state.activeId,
-    activePdfId: pdfs.some(({ id }) => id === chosenPdf) ? chosenPdf : null,
+    workspaces,
     cards: state.items.map(({ id, title }) => ({ id, title, canvas: false })),
     pdfs,
     library,
@@ -226,10 +241,10 @@ export async function exportWorkspace(live: LiveCanvas) {
       pages.set(file.id, await verifyPdf(file, blob))
       await addBlob(pdfPath(file.id), blob)
     }
-    let checkedLive = false
+    let checkedLive = live === null
     for (const [index, card] of state.items.entries()) {
       const data = await readCanvas(card.persistenceKey)
-      if (card.persistenceKey === live.persistenceKey) {
+      if (live && card.persistenceKey === live.persistenceKey) {
         check(matchesLiveCanvas(data, live), '当前画布的最新修改尚未写入磁盘，导出已停止。')
         checkedLive = true
       }
@@ -337,11 +352,11 @@ export async function restoreWorkspace({ manifest, canvases, pdfs }: ValidatedBa
   check(readActiveDataset() === workspaceDataset, '当前数据已在另一标签页切换，请刷新后重试。')
   const dataset = crypto.randomUUID()
   const cardsKey = datasetKey('cards', dataset)
-  const pdfKey = datasetKey('active-pdf', dataset)
+  const workspacesKey = datasetKey('workspaces', dataset)
   const foldersKey = libraryKey(dataset)
   const cards: CardListState = {
     items: manifest.cards.map(({ id, title }) => ({ id, title, persistenceKey: datasetKey(`card:${id}`, dataset) })),
-    activeId: manifest.activeCardId,
+    activeId: manifest.cards[0]?.id ?? '',
     pendingDeletes: [],
   }
   const created: string[] = []
@@ -354,13 +369,13 @@ export async function restoreWorkspace({ manifest, canvases, pdfs }: ValidatedBa
     }
     await writeRestoredPdfs(dataset, pdfs)
     localStorage.setItem(cardsKey, JSON.stringify(cards))
-    if (manifest.activePdfId) localStorage.setItem(pdfKey, manifest.activePdfId)
+    localStorage.setItem(workspacesKey, JSON.stringify(manifest.workspaces))
     localStorage.setItem(foldersKey, JSON.stringify(manifest.library))
     // A single atomic pointer write activates both Card and PDF data on the next load.
     localStorage.setItem(ACTIVE_DATASET_KEY, dataset)
   } catch (error) {
     localStorage.removeItem(cardsKey)
-    localStorage.removeItem(pdfKey)
+    localStorage.removeItem(workspacesKey)
     localStorage.removeItem(foldersKey)
     await Promise.all([...created.map(removeStagedCanvas), removeStagedPdfs(dataset)])
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {

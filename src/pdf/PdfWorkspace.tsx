@@ -3,11 +3,15 @@ import WorkspaceIcon from '../WorkspaceIcon'
 import PdfList from './PdfList'
 import PdfReader from './PdfReader'
 import type { PdfRegion, PdfRegionMode, PdfRegionReference } from './pdfRegion'
+import type { PdfView } from '../workspace/workspaceStorage'
 import type { PdfWorkspaceState } from './usePdfWorkspace'
 import './pdf.css'
 
 type PdfWorkspaceProps = {
   pdf: PdfWorkspaceState
+  workspaceId: string
+  reading: Record<string, PdfView>
+  onReadingChange: (pdfId: string, view: PdfView) => void
   onImport: () => void
   selectionMode: PdfRegionMode | null
   onStartSelection: () => void
@@ -17,7 +21,7 @@ type PdfWorkspaceProps = {
   onOpenCard: (cardId: string) => void
 }
 
-export default function PdfWorkspace({ pdf, onImport, ...props }: PdfWorkspaceProps) {
+export default function PdfWorkspace({ pdf, workspaceId, reading, onReadingChange, onImport, ...props }: PdfWorkspaceProps) {
   const { files, openFiles, activeId, loading, importing, notice, errors, sourceError, destination } = pdf
   const references = useMemo(() => props.references.filter(({ region }) => region.pdfId === activeId),
     [props.references, activeId])
@@ -36,7 +40,8 @@ export default function PdfWorkspace({ pdf, onImport, ...props }: PdfWorkspacePr
       {errors && <p role="alert">{errors}</p>}
       {sourceError && <p role="alert">{sourceError}</p>}
       {activeId
-        ? <PdfReader key={activeId} id={activeId} {...props} references={references} destination={destination} />
+        ? <PdfReader key={workspaceId + activeId} id={activeId} {...props} references={references} destination={destination}
+            workspaceId={workspaceId} initialView={destination ? undefined : reading[activeId]} onReadingChange={onReadingChange} />
         : !loading && !errors && (
           <div className="pdf-empty">
             <span className="pdf-empty-icon"><WorkspaceIcon name="pdf" /></span>
