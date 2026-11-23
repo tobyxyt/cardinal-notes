@@ -5,6 +5,8 @@ import BackupControls from './backup/BackupControls'
 import { ACTIVE_DATASET_KEY, readActiveDataset, WORKSPACE_LOCK, workspaceDataset } from './dataset'
 import WorkspaceLayout, { loadLayout, saveLayout, viewModes, type Layout } from './WorkspaceLayout'
 import WorkspaceIcon from './WorkspaceIcon'
+import WorkspaceNavigation from './WorkspaceNavigation'
+import { usePdfWorkspace } from './pdf/usePdfWorkspace'
 import './App.css'
 
 const PdfWorkspace = lazy(() => import('./pdf/PdfWorkspace'))
@@ -21,7 +23,13 @@ function Workspace({
   const [target, setTarget] = useState<RegionTarget | null>(null)
   const [destination, setDestination] = useState<PdfRegion | null>(null)
   const [references, setReferences] = useState<PdfRegionReference[]>([])
+  const [hasUnknownReferences, setHasUnknownReferences] = useState(true)
+  const [activeCardId, setActiveCardId] = useState('')
+  const pdfInput = useRef<HTMLInputElement>(null)
+  const cancelPdfJump = useCallback(() => setDestination(null), [])
+  const pdf = usePdfWorkspace(destination, cancelPdfJump, onPdfImportingChange)
   const onActiveCardChange = useCallback((cardId: string) => {
+    setActiveCardId(cardId)
     setTarget((current) => current?.mode === 'insert' && current.cardId !== cardId ? null : current)
   }, [])
 
@@ -44,7 +52,19 @@ function Workspace({
     setDestination({ ...region })
   }
 
-  const cancelPdfJump = useCallback(() => setDestination(null), [])
+  function openPdf(id: string) {
+    revealPane('pdf')
+    pdf.selectPdf(id)
+  }
+
+  function openCard(id: string) {
+    revealPane('card')
+    cards.current?.openCard(id)
+  }
+
+  function selectPdfFiles() {
+    pdfInput.current?.click()
+  }
 
   function confirmRegion(region: PdfRegion) {
     if (!target) return
@@ -60,18 +80,14 @@ function Workspace({
       pdf={(
         <Suspense fallback={<p className="workspace-notice" role="status">正在加载 PDF 阅读器…</p>}>
           <PdfWorkspace
+            pdf={pdf}
+            onImport={selectPdfFiles}
             selectionMode={target?.mode ?? null}
             onStartSelection={() => setTarget({ mode: 'create' })}
             onCancelSelection={() => setTarget(null)}
             onConfirmRegion={confirmRegion}
             references={references}
-            sourceRequest={destination}
-            onCancelSourceRequest={cancelPdfJump}
-            onOpenCard={(cardId) => {
-              revealPane('card')
-              cards.current?.openCard(cardId)
-            }}
-            onImportingChange={onPdfImportingChange}
+            onOpenCard={openCard}
           />
         </Suspense>
       )}
@@ -85,7 +101,23 @@ function Workspace({
           onActiveCardChange={onActiveCardChange}
           onOpenPdfSource={openPdfSource}
           onReferencesChange={setReferences}
+          onReferenceStatusChange={setHasUnknownReferences}
         />
+      )}
+      overlay={(
+        <>
+          <input ref={pdfInput} type="file" accept=".pdf,application/pdf" aria-label="选择 PDF 文件" multiple hidden
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? [])
+              event.currentTarget.value = ''
+              if (!files.length) return
+              revealPane('pdf')
+              void pdf.importFiles(files)
+            }} />
+          <WorkspaceNavigation pdf={pdf} activeCardId={activeCardId} references={references}
+            hasUnknownReferences={hasUnknownReferences} onImport={selectPdfFiles} onOpenPdf={openPdf}
+            onOpenCard={openCard} />
+        </>
       )}
     />
   )

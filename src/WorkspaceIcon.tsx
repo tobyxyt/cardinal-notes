@@ -13,6 +13,10 @@ const paths = {
   close: 'M5 5l10 10 M15 5 5 15',
   right: 'm8 5 5 5-5 5',
   left: 'm12 5-5 5 5 5',
+  down: 'm5 8 5 5 5-5',
+  link: 'M8 12l4-4 M7 13l-1 1a3 3 0 0 1-4-4l3-3a3 3 0 0 1 4 0 M13 7l1-1a3 3 0 0 1 4 4l-3 3a3 3 0 0 1-4 0',
+  library: 'M3 4h3v12H3z M9 4h3v12H9z M14 5l2-.5 3 11-2 .5z',
+  search: 'M13 13l4 4 M14 9a5 5 0 1 1-10 0 5 5 0 0 1 10 0',
 } as const
 
 export default function WorkspaceIcon({ name }: { name: keyof typeof paths }) {

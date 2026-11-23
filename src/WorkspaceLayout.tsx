@@ -47,12 +47,13 @@ function splitRatio(percent: number, available: number) {
 }
 
 export default function WorkspaceLayout({
-  layout, onChange, pdf, card,
+  layout, onChange, pdf, card, overlay,
 }: {
   layout: Layout
   onChange: (layout: Layout) => void
   pdf: ReactNode
   card: ReactNode
+  overlay: ReactNode
 }) {
   const surface = useRef<HTMLDivElement>(null)
   const separator = useRef<HTMLDivElement>(null)
@@ -170,6 +171,7 @@ export default function WorkspaceLayout({
         onKeyDown={(event) => {
           const { key } = event
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Escape'].includes(key)) return
+          if (key === 'Escape' && !drag.current) return
           event.preventDefault()
           event.stopPropagation()
           if (key === 'Escape') clearPreview()
@@ -183,6 +185,7 @@ export default function WorkspaceLayout({
           }
         }}
       />
+      {overlay}
       {mode !== 'split' && (
         <button
           type="button"

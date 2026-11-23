@@ -21,10 +21,11 @@ type CardWorkspaceProps = {
   onActiveCardChange: (cardId: string) => void
   onOpenPdfSource: (region: PdfRegion) => void
   onReferencesChange: (references: PdfRegionReference[]) => void
+  onReferenceStatusChange: (hasUnknownReferences: boolean) => void
 }
 
 export default function CardWorkspace({
-  ref, onStartPdfRegion, onActiveCardChange, onOpenPdfSource, onReferencesChange,
+  ref, onStartPdfRegion, onActiveCardChange, onOpenPdfSource, onReferencesChange, onReferenceStatusChange,
 }: CardWorkspaceProps) {
   const [cards, setCards] = useState(loadCards)
   const activeCard = cards.items.find((card) => card.id === cards.activeId)!
@@ -33,6 +34,7 @@ export default function CardWorkspace({
   const { watchReferences, hasUnknownReferences } = useCardPdfReferences(cards.items, onReferencesChange)
 
   useEffect(() => onActiveCardChange(activeCard.id), [activeCard.id, onActiveCardChange])
+  useEffect(() => onReferenceStatusChange(hasUnknownReferences), [hasUnknownReferences, onReferenceStatusChange])
 
   function onEditorMount(cardId: string, editor: Editor) {
     const current = { cardId, editor }
