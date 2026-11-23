@@ -14,6 +14,9 @@ body {
   --focus: #655ab0;
   --tool-size: 34px;
   --header-height: 52px;
+  --safe-area-top: 0px;
+  --safe-area-inline: 0px;
+  --header-bottom: calc(var(--header-height) + var(--safe-area-top));
   position: fixed;
   inset: 0;
   display: grid;
@@ -23,7 +26,13 @@ body {
   font: 14px/1.4 Inter, system-ui, sans-serif;
 }
 
+:root[data-native-ios] .app-shell {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-inline: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+}
+
 .app-header {
+  --header-inline-padding: 14px;
   position: relative;
   z-index: 10;
   display: grid;
@@ -31,7 +40,8 @@ body {
   align-items: center;
   gap: 8px;
   min-height: var(--header-height);
-  padding-inline: 14px;
+  padding-top: var(--safe-area-top);
+  padding-inline: calc(var(--header-inline-padding) + var(--safe-area-inline));
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
@@ -69,8 +79,8 @@ body {
 .workspace-error {
   position: absolute;
   z-index: 12;
-  top: calc(var(--header-height) + 8px);
-  right: 12px;
+  top: calc(var(--header-bottom) + 8px);
+  right: calc(12px + var(--safe-area-inline));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -198,13 +208,13 @@ body {
 
 .workspace-menu {
   position: fixed;
-  inset: calc(var(--header-height) - 3px) 12px auto auto;
+  inset: calc(var(--header-bottom) - 3px) calc(12px + var(--safe-area-inline)) auto auto;
   width: 170px;
   margin: 0;
 }
 
 .workspace-menu.workspace-sessions {
-  inset: calc(var(--header-height) + 1px) 0 auto;
+  inset: calc(var(--header-bottom) + 1px) 0 auto;
   width: 246px;
   margin-inline: auto;
 }
@@ -462,7 +472,7 @@ body {
   .app-header-start { gap: 3px; }
   .app-pages { gap: 0; }
   .app-pages .text-button { padding-inline: 6px; }
-  .app-header { padding-inline: 8px; }
+  .app-header { --header-inline-padding: 8px; }
 }
 
 @media (pointer: coarse) {

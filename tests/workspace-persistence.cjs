@@ -304,6 +304,71 @@ async function verifyLayout(page, browser, origin) {
   console.log('Workspace snapping, expansion, keyboard, touch and persisted layout passed without remounting the editor or PDF.')
 }
 
+async function verifyIosSafeArea(browser, origin) {
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true })
+  try {
+    const page = await context.newPage()
+    const cdp = await context.newCDPSession(page)
+    const insets = (top, left = 0) => cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top, left, right: 0 } })
+    const header = page.locator('.app-header')
+    const viewport = page.locator('meta[name="viewport"]')
+    await insets(24)
+    await page.goto(origin)
+    await expect(header).toHaveCSS('padding-top', '0px')
+    await expect(viewport).not.toHaveAttribute('content', /viewport-fit/)
+    await page.addInitScript(() => {
+      window.webkit = { messageHandlers: { bridge: {} } }
+    })
+    await page.reload()
+    await expect(viewport).toHaveAttribute('content', /viewport-fit=cover/)
+    await openGeneral(page)
+    await waitEditor(page)
+    await page.getByLabel('选择 PDF 文件').setInputFiles({
+      name: 'Safe area.pdf', mimeType: 'application/pdf', buffer: makePdf('Safe area'),
+    })
+    const pdf = page.locator('.pdfViewer .page').first()
+    const card = page.locator('.card-editor .tl-canvas')
+    await expect(pdf).toBeVisible(timeout)
+    await expect(card).toBeVisible()
+    await page.evaluate(() => {
+      window.safeAreaNodes = [document.querySelector('.pdfViewer .page'), document.querySelector('.card-editor .tl-canvas')]
+    })
+
+    for (const { width, height, top, left } of [
+      { width: 1024, height: 768, top: 24, left: 18 },
+      { width: 768, height: 1024, top: 32, left: 0 },
+      { width: 768, height: 1024, top: 0, left: 0 },
+    ]) {
+      await page.setViewportSize({ width, height })
+      await insets(top, left)
+      await expect(header).toHaveCSS('padding-top', top + 'px')
+      await expect(header).toHaveCSS('padding-left', (14 + left) + 'px')
+      const headerBounds = await header.boundingBox()
+      const homeBounds = await header.getByRole('button', { name: 'Home' }).boundingBox()
+      const workspace = await page.locator('.app-workspace').boundingBox()
+      expect(homeBounds.y).toBeGreaterThanOrEqual(top)
+      expect(workspace.y).toBeCloseTo(headerBounds.y + headerBounds.height, 0)
+      expect(workspace.y + workspace.height).toBeCloseTo(height, 0)
+      const menu = await manage(page)
+      expect((await menu.boundingBox()).y).toBeCloseTo(workspace.y, 0)
+      await workspaceName(page, 'General').press('Escape')
+      const more = header.getByRole('button', { name: '更多操作' })
+      await more.tap()
+      const actions = page.getByRole('group', { name: '备份操作' })
+      await expect(actions).toBeVisible()
+      expect((await actions.boundingBox()).y).toBeCloseTo(workspace.y - 4, 0)
+      await more.press('Escape')
+      expect(await page.evaluate(() =>
+        window.safeAreaNodes[0] === document.querySelector('.pdfViewer .page') &&
+        window.safeAreaNodes[1] === document.querySelector('.card-editor .tl-canvas'),
+      )).toBe(true)
+    }
+    console.log('Native iOS safe-area overrides followed rotation and inset changes; header menus aligned and PDF/Card stayed mounted.')
+  } finally {
+    await context.close()
+  }
+}
+
 async function verifyNavigation(page, browser, origin) {
   const left = pdfHandle(page)
   const right = cardsHandle(page)
@@ -1312,6 +1377,7 @@ async function run() {
     await expect(page.getByText('部分 PDF 引用尚未确认。')).toHaveCount(0)
     console.log('Inactive references work; valid indexes skip reads, and missing or malformed indexes rebuild after errors.')
     await verifyCardUi(browser, origin)
+    await verifyIosSafeArea(browser, origin)
     await verifyLayout(page, browser, origin)
     await verifyNavigation(page, browser, origin)
 
