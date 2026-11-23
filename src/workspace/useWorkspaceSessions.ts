@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  changeSession, readCheckpoint, readLegacyWorkspace, readWorkspaces, READING_CHECKPOINT, saveView, updateWorkspaces, WORKSPACES_KEY,
+  changeSession, GENERAL_WORKSPACE, readCheckpoint, readLegacyWorkspace, readWorkspaces, READING_CHECKPOINT, saveView, updateWorkspaces, WORKSPACES_KEY,
   type WorkspaceData, type WorkspaceSession,
 } from './workspaceStorage'
 
@@ -17,13 +17,13 @@ export function useWorkspaceSessions() {
   })
   const [selectedId, setSelectedId] = useState(data.activeId)
   const [error, setError] = useState('')
-  const active = data.items.find(({ id }) => id === selectedId) ?? data.items.find(({ id }) => id === data.activeId)!
+  const active = data.items.find(({ id }) => id === selectedId) ?? data.items.find(({ id }) => id === (data.activeId ?? GENERAL_WORKSPACE))!
 
   const commit = useCallback(async (change: (data: WorkspaceData) => WorkspaceData | Promise<WorkspaceData>, select = false) => {
     try {
       const next = await updateWorkspaces(change)
       setData(next)
-      if (select) setSelectedId(next.activeId)
+      setSelectedId((id) => select || !next.items.some((item) => item.id === id) ? next.activeId : id)
       setError('')
       return true
     } catch (cause) {
@@ -57,5 +57,5 @@ export function useWorkspaceSessions() {
     return () => window.removeEventListener('storage', sync)
   }, [commit])
 
-  return { active, items: data.items, commit, update, error }
+  return { active, lastUsedId: data.activeId, items: data.items, commit, update, error }
 }

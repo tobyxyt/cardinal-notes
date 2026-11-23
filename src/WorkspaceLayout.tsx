@@ -183,7 +183,18 @@ export default function WorkspaceLayout({
           type="button"
           className="workspace-edge"
           ref={edge}
-          onClick={() => changeMode('split')}
+          onPointerUp={(event) => {
+            // Some touch browsers suppress the click immediately after a separator drag.
+            if (event.pointerType !== 'touch' || !event.isPrimary) return
+            const { left, right, top, bottom } = event.currentTarget.getBoundingClientRect()
+            if (event.clientX >= left && event.clientX <= right && event.clientY >= top && event.clientY <= bottom) {
+              changeMode('split')
+            }
+          }}
+          onClick={(event) => {
+            if ('pointerType' in event.nativeEvent && event.nativeEvent.pointerType === 'touch') return
+            changeMode('split')
+          }}
           aria-label={mode === 'card' ? '展开 PDF，恢复双栏' : '展开 Card，恢复双栏'}
           title={mode === 'card' ? '展开 PDF，恢复双栏' : '展开 Card，恢复双栏'}
         >

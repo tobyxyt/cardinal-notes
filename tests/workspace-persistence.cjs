@@ -241,6 +241,10 @@ async function verifyLayout(page, browser, origin) {
   try {
     const tablet = await touch.newPage()
     await tablet.goto(origin)
+    await tablet.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: 'Workspaces', exact: true }).tap()
+    await workspacesPage(tablet).getByRole('button', { name: 'General', exact: true }).tap()
+    await expect(workspaceName(tablet, 'General')).toHaveAttribute('aria-current', 'page')
+    await waitEditor(tablet)
     const divider = tablet.getByRole('separator')
     await expect(divider).toBeVisible()
     const box = await divider.boundingBox()
@@ -251,7 +255,13 @@ async function verifyLayout(page, browser, origin) {
     await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 70, y }] })
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     await expect(tablet.locator('.split-workspace')).toHaveAttribute('data-mode', 'card')
-    await tablet.getByRole('button', { name: '展开 PDF，恢复双栏' }).tap()
+    const handle = tablet.getByRole('button', { name: '展开 PDF，恢复双栏' })
+    await expect(handle).toBeVisible()
+    const edge = await handle.boundingBox()
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{
+      x: edge.x + edge.width / 2, y: edge.y + edge.height / 2,
+    }] })
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     await expect(divider).toHaveAttribute('aria-valuenow', '50')
     await tablet.setViewportSize({ width: 390, height: 844 })
     await expect(divider).toBeVisible()
@@ -338,6 +348,9 @@ async function verifyNavigation(page, browser, origin) {
   try {
     const tablet = await touch.newPage()
     await tablet.goto(origin)
+    await tablet.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: 'Workspaces', exact: true }).tap()
+    await workspacesPage(tablet).getByRole('button', { name: 'General', exact: true }).tap()
+    await expect(workspaceName(tablet, 'General')).toHaveAttribute('aria-current', 'page')
     await pdfHandle(tablet).tap()
     const chooser = tablet.waitForEvent('filechooser')
     await pdfPanel(tablet).getByRole('button', { name: '导入 PDF', exact: true }).tap()
@@ -363,14 +376,16 @@ async function verifyNavigation(page, browser, origin) {
 const libraryPage = (page) => page.getByRole('main', { name: 'Library', exact: true })
 
 async function openLibrary(page) {
-  await page.getByRole('button', { name: 'Library', exact: true }).click()
+  const header = page.getByRole('navigation', { name: '主导航' })
+  await header.getByRole('button', { name: 'Home', exact: true }).click()
+  await homePage(page).getByRole('button', { name: /^Library/ }).click()
   await expect(libraryPage(page)).toBeVisible()
   return libraryPage(page)
 }
 
 async function openGeneral(page) {
-  await page.getByRole('button', { name: 'General', exact: true }).click()
-  await expect(libraryPage(page)).toBeHidden()
+  await (await openWorkspaces(page)).getByRole('button', { name: 'General', exact: true }).click()
+  await expect(workspaceName(page, 'General')).toHaveAttribute('aria-current', 'page')
 }
 
 async function saveFolderName(library, name) {
@@ -487,11 +502,22 @@ async function writeInvalidLibraryBackup(input, output, change) {
   }
 }
 
-const workspaceMenu = (page) => page.getByRole('group', { name: '工作区管理' })
+const homePage = (page) => page.getByRole('main', { name: 'Home', exact: true })
+const workspacesPage = (page) => page.getByRole('main', { name: 'Workspaces', exact: true })
+const workspaceMenu = (page) => page.getByRole('group', { name: '切换工作区' })
+
+async function openWorkspaces(page) {
+  const header = page.getByRole('navigation', { name: '主导航' })
+  await header.getByRole('button', { name: 'Home', exact: true }).click()
+  await homePage(page).getByRole('button', { name: /^Workspaces/ }).click()
+  const manager = workspacesPage(page)
+  await expect(manager).toBeVisible()
+  return manager
+}
 const workspaceName = (page, name) => page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name, exact: true })
 
 async function manage(page) {
-  await page.getByRole('button', { name: '管理工作区', exact: true }).click()
+  await page.getByRole('navigation', { name: '主导航' }).locator('.workspace-menu-trigger').click()
   const menu = workspaceMenu(page)
   await expect(menu).toBeVisible()
   return menu
@@ -503,11 +529,12 @@ async function switchWorkspace(page, name) {
   await expect(workspaceName(page, name)).toHaveAttribute('aria-current', 'page')
 }
 
-async function editWorkspace(page, action, name) {
-  const menu = await manage(page)
-  await menu.getByRole('button', { name: action, exact: true }).click()
-  await menu.getByRole('textbox', { name: '工作区名称' }).fill(name)
-  await menu.getByRole('button', { name: '保存工作区' }).click()
+async function editWorkspace(page, action, name, previous) {
+  const manager = await openWorkspaces(page)
+  await manager.getByRole('button', { name: previous ? '重命名 ' + previous : action, exact: true }).click()
+  await manager.getByRole('textbox', { name: '工作区名称' }).fill(name)
+  await manager.getByRole('button', { name: '保存工作区' }).click()
+  if (previous) await manager.getByRole('button', { name, exact: true }).click()
   await expect(workspaceName(page, name)).toHaveAttribute('aria-current', 'page')
 }
 
@@ -555,6 +582,7 @@ async function verifySessions(page, scratch) {
   await expect(workspaceName(page, 'Reading')).toHaveAttribute('aria-current', 'page')
   await expect(pdfButton(page, 'Beta')).toHaveAttribute('aria-pressed', 'true')
   await selectPdf(page, 'Study')
+  await page.evaluate(() => window.tlsync.store.update('shape:photo', (shape) => ({ ...shape, y: shape.y + 7 })))
   await editWorkspace(page, '新建工作区', 'Review')
   await selectPdf(page, 'Alpha')
   await cardsHandle(page).click()
@@ -567,10 +595,16 @@ async function verifySessions(page, scratch) {
   await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '50')
   await activateExistingCard(page, 'Card 1')
   await expectImage(page)
+  expect(await page.evaluate(() => window.tlsync.store.get('shape:photo').y)).toBe(82)
   await page.getByRole('button', { name: '关闭 Card 1', exact: true }).click()
   await expect(cardButton(page, 1)).toHaveCount(0)
   await expect(cardButton(page, 2)).toHaveAttribute('aria-pressed', 'true')
-  await switchWorkspace(page, 'Reading')
+  const menu = await manage(page)
+  await menu.getByRole('button', { name: 'Reading', exact: true }).evaluate((button) => {
+    window.tlsync.store.update('shape:second-a', (shape) => ({ ...shape, y: shape.y + 11 }))
+    button.click()
+  })
+  await expect(workspaceName(page, 'Reading')).toHaveAttribute('aria-current', 'page')
   await expect(cardButton(page, 1)).toHaveAttribute('aria-pressed', 'true')
   await expect(pdfButton(page, 'Alpha')).toHaveCount(0)
   await expect(pdfButton(page, 'Study')).toHaveAttribute('aria-pressed', 'true')
@@ -584,8 +618,22 @@ async function verifySessions(page, scratch) {
   await expect.poll(() => scroll.evaluate((node) => node.scrollTop), timeout).toBeGreaterThan(500)
   await expectImage(page)
 
+  const remembered = (await sessionsOf(page)).activeId
+  await page.evaluate(() => { window.beforeHomeStore = window.tlsync.store })
+  const header = page.getByRole('navigation', { name: '主导航' })
+  await header.getByRole('button', { name: 'Home', exact: true }).click()
+  await expect(homePage(page)).toBeVisible()
+  expect(await page.evaluate(() => window.beforeHomeStore === window.tlsync.store)).toBe(true)
+  await openLibrary(page)
+  expect((await sessionsOf(page)).activeId).toBe(remembered)
+  await page.reload()
+  await expect(workspaceName(page, 'Reading')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('separator')).toHaveAttribute('aria-valuenow', '60')
+
   await switchWorkspace(page, 'Review')
-  await editWorkspace(page, '重命名工作区', 'Revision')
+  await waitEditor(page)
+  expect(await page.evaluate(() => window.tlsync.store.get('shape:second-a').y)).toBe(86)
+  await editWorkspace(page, '重命名工作区', 'Revision', 'Review')
   const library = await openLibrary(page)
   await library.getByRole('button', { name: 'Beta.pdf', exact: true }).click()
   await expect(workspaceName(page, 'General')).toHaveAttribute('aria-current', 'page')
@@ -604,8 +652,13 @@ async function verifySessions(page, scratch) {
     expect(dialog.message()).toContain('Library 文档会保留')
     await dialog.accept()
   })
-  await (await manage(page)).getByRole('button', { name: '删除工作区' }).click()
-  await expect(workspaceName(page, 'General')).toHaveAttribute('aria-current', 'page')
+  const manager = await openWorkspaces(page)
+  await expect(manager.getByRole('button', { name: '删除 General', exact: true })).toHaveCount(0)
+  await manager.getByRole('button', { name: '删除 Revision', exact: true }).click()
+  await expect(manager.getByRole('button', { name: 'Revision', exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(homePage(page)).toBeVisible()
+  await openGeneral(page)
   await expectImage(page)
   expect((await sessionsOf(page)).items.map(({ name }) => name)).toEqual(['General', 'Reading'])
 
@@ -684,6 +737,12 @@ async function run() {
       }
     })
     await page.goto(origin)
+    if (!verifyLegacy) {
+      await expect(homePage(page)).toBeVisible()
+      await expect(page.locator('.editor-page')).toBeHidden()
+      expect((await sessionsOf(page))?.activeId ?? null).toBeNull()
+      await openGeneral(page)
+    }
     await waitEditor(page)
     await page.locator('input[aria-label="选择 PDF 文件"], .pdf-bar input').setInputFiles([
       { name: 'Alpha.pdf', mimeType: 'application/pdf', buffer: makePdf('Alpha') },
@@ -704,10 +763,14 @@ async function run() {
     const oldZip = path.join(scratch, 'old.zip')
     const newZip = path.join(scratch, 'new.zip')
     await download(page, oldZip)
-    console.log('Two Cards, two PDFs, three region shapes and an image exported as ZIP v1.')
+    console.log('Two Cards, two PDFs, three region shapes and an image exported as a workspace backup.')
 
     dist = newDist
     await page.reload()
+    if (verifyLegacy) {
+      await expect(homePage(page)).toBeVisible()
+      await openGeneral(page)
+    }
     await waitEditor(page, second.persistenceKey)
     await expect(marker(page)).toHaveCount(2, timeout)
     await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem(key))?.length, cachePrefix + first.persistenceKey), timeout).toBe(2)
@@ -788,7 +851,7 @@ async function run() {
     const restored = await blank.newPage()
     restored.on('pageerror', error => errors.push(error.message))
     await restored.goto(origin)
-    await waitEditor(restored)
+    await expect(homePage(restored)).toBeVisible()
     await restore(restored, oldZip)
     await expect(marker(restored)).toHaveCount(2, timeout)
     expect((await cardState(restored)).items.map(c => c.id)).toEqual([first.id, second.id])
@@ -821,7 +884,7 @@ async function run() {
     const clean = await browser.newContext({ viewport: { width: 1480, height: 950 } })
     const imported = await clean.newPage()
     await imported.goto(origin)
-    await waitEditor(imported)
+    await expect(homePage(imported)).toBeVisible()
     await restore(imported, newZip)
     const restoredSessions = await sessionsOf(imported)
     const sessionTabs = ({ items }) => items.map(({ id, name, pdf, card, layout }) => ({ id, name, pdf, card, layout }))
@@ -839,6 +902,18 @@ async function run() {
       imageX: window.tlsync.store.get('shape:photo').x,
       zoom: window.tlsync.store.allRecords().find(record => record.typeName === 'camera').z,
     }))).toEqual({ imageX: 390, zoom: 0.95 })
+    await imported.evaluate(() => {
+      const dataset = localStorage.getItem('cardinal-notes:active-dataset')
+      const key = 'cardinal-notes:restore:' + dataset + ':workspaces'
+      const saved = JSON.parse(localStorage.getItem(key))
+      localStorage.setItem(key, JSON.stringify({ ...saved, activeId: 'missing' }))
+    })
+    await imported.reload()
+    await expect(homePage(imported)).toBeVisible()
+    const manager = await openWorkspaces(imported)
+    await expect(manager.getByRole('button', { name: 'Reading', exact: true })).toBeVisible()
+    await manager.getByRole('button', { name: 'General', exact: true }).click()
+    await expectImage(imported)
     const pointer = await imported.evaluate(() => localStorage.getItem('cardinal-notes:active-dataset'))
     const library = await openLibrary(imported)
     await expect(library.getByRole('combobox', { name: '移动 PDF Alpha.pdf' }).locator('option:checked')).toHaveText('Research / Papers')

@@ -1,4 +1,5 @@
 const paths = {
+  home: 'm2.5 9 7.5-6 7.5 6 M4.5 8v9h4v-5h3v5h4V8',
   pdf: 'M3 4h12v12H3z M6 8h6 M6 11h4',
   split: 'M2.5 4h15v12h-15z M10 4v12',
   card: 'M5 4h12v12H5z M8 8h6 M8 11h3',

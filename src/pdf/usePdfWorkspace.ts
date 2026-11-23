@@ -99,7 +99,7 @@ export function usePdfWorkspace(
     onClose(id)
   }
 
-  async function importFiles(selected: File[]) {
+  async function importFiles(selected: File[], openAfterImport: boolean) {
     if (!selected.length) return
     setImporting(true)
     onImportingChange(true)
@@ -123,7 +123,7 @@ export function usePdfWorkspace(
     }
 
     if (lastImportedId) {
-      selectPdf(lastImportedId)
+      if (openAfterImport) selectPdf(lastImportedId)
       // An import can finish after switching views and returning to the library.
       window.dispatchEvent(new Event(PDFS_IMPORTED))
     }
@@ -137,7 +137,8 @@ export function usePdfWorkspace(
   const openFiles = tabs.ids.flatMap((id) => filesById.get(id) ?? [])
   const activeId = filesById.has(tabs.activeId) ? tabs.activeId : ''
   return {
-    files, filesReady, openFiles, activeId, loading, importing, notice, errors, sourceError, destination: destination?.pdfId === activeId ? destination : null,
+    files, filesReady, openFiles, activeId, loading, importing, notice, errors, sourceError,
+    destination: destination === sourceRequest && destination?.pdfId === activeId ? destination : null,
     selectPdf, closePdf, importFiles,
   }
 }

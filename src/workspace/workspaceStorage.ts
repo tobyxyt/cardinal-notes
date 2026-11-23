@@ -19,7 +19,7 @@ export type WorkspaceSession = {
   layout: Layout
   reading: Record<string, PdfView>
 }
-export type WorkspaceData = { activeId: string; items: WorkspaceSession[] }
+export type WorkspaceData = { activeId: string | null; items: WorkspaceSession[] }
 
 const emptyTabs = (): Tabs => ({ ids: [], activeId: '' })
 
@@ -61,13 +61,15 @@ export function clearTabs(session: WorkspaceSession): WorkspaceSession {
 }
 
 export function changeSession(data: WorkspaceData, id: string, change: (session: WorkspaceSession) => WorkspaceSession) {
-  return { ...data, items: data.items.map((session) => session.id === id ? change(session) : session) }
+  const items = data.items.map((session) => session.id === id ? change(session) : session)
+  return items.some((item, index) => item !== data.items[index]) ? { ...data, items } : data
 }
 
 export function pruneDocuments(data: WorkspaceData, kind: DocumentKind, available: ReadonlySet<string>) {
-  return { ...data, items: data.items.map((session) =>
+  const items = data.items.map((session) =>
     session[kind].ids.reduce((current, id) => available.has(id) ? current : updateTab(current, kind, id, false), session),
-  ) }
+  )
+  return items.some((item, index) => item !== data.items[index]) ? { ...data, items } : data
 }
 
 function validView(value: unknown): value is PdfView {
@@ -105,28 +107,40 @@ export function validateWorkspaces(value: unknown): WorkspaceData {
     if (!session.reading || typeof session.reading !== 'object' || Array.isArray(session.reading) ||
         Object.entries(session.reading).some(([id, view]) => !session.pdf.ids.includes(id) || !validView(view))) throw bad
   }
-  if (!seen.has(GENERAL_WORKSPACE) || !seen.has(data.activeId)) throw bad
+  if (!seen.has(GENERAL_WORKSPACE) || (data.activeId !== null && !seen.has(data.activeId))) throw bad
   return data
 }
 
 export function readWorkspaces(): WorkspaceData {
   const saved = localStorage.getItem(WORKSPACES_KEY)
-  if (saved !== null) return validateWorkspaces(JSON.parse(saved))
+  if (saved !== null) {
+    try {
+      const parsed = JSON.parse(saved) as WorkspaceData
+      const data = validateWorkspaces({ ...parsed, activeId: null })
+      return { ...data, activeId: data.items.some(({ id }) => id === parsed.activeId) ? parsed.activeId : null }
+    } catch {
+      // A damaged session does not prevent access to the global document catalogs.
+    }
+  }
   return readLegacyWorkspace()
 }
 
 export function readLegacyWorkspace() {
   const cards = loadCards()
   const ids = cards.items.map(({ id }) => id)
-  return seedWorkspaces({ ids, activeId: ids.includes(cards.activeId) ? cards.activeId : ids[0] ?? '' },
+  const data = seedWorkspaces({ ids, activeId: ids.includes(cards.activeId) ? cards.activeId : ids[0] ?? '' },
     readActivePdfId(), loadLayout())
+  return { ...data, activeId: null }
 }
 
 export function updateWorkspaces(change: (data: WorkspaceData) => WorkspaceData | Promise<WorkspaceData>) {
   return navigator.locks.request(WORKSPACES_KEY, async () => {
-    const data = validateWorkspaces(await change(readWorkspaces()))
-    const encoded = JSON.stringify(data)
-    if (encoded !== localStorage.getItem(WORKSPACES_KEY)) localStorage.setItem(WORKSPACES_KEY, encoded)
+    const current = readWorkspaces()
+    const data = validateWorkspaces(await change(current))
+    if (data !== current) {
+      const encoded = JSON.stringify(data)
+      if (encoded !== localStorage.getItem(WORKSPACES_KEY)) localStorage.setItem(WORKSPACES_KEY, encoded)
+    }
     return data
   })
 }
@@ -141,4 +155,9 @@ export function readCheckpoint(): ReadingCheckpoint | null {
   } catch {
     return null
   }
+}
+
+export function showPane(session: WorkspaceSession, kind: DocumentKind): WorkspaceSession {
+  if (session.layout.mode === 'split' || session.layout.mode === kind) return session
+  return { ...session, layout: { ...session.layout, mode: 'split' } }
 }

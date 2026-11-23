@@ -43,15 +43,10 @@ body {
   min-width: 0;
 }
 
-.app-header-start { gap: 12px; }
-.app-pages > .text-button:first-child {
-  display: block;
-  min-width: 0;
-  max-width: min(145px, 21vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.workspace-menu-trigger { margin-inline-start: -4px; }
+.app-header-start { gap: 6px; }
+.app-pages .workspace-menu-trigger { flex: 0 1 auto; min-width: 0; }
+.workspace-menu-trigger span { overflow: hidden; text-overflow: ellipsis; }
+.workspace-menu-trigger svg { width: 14px; }
 .workspace-sessions {
   inset: calc(var(--header-height) - 3px) auto auto 12px;
   width: 246px;
@@ -65,16 +60,6 @@ body {
 }
 .workspace-session-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-session-list button[aria-current='true'] { background: var(--selected); color: var(--accent); }
-.workspace-session-form { display: grid; grid-template-columns: 1fr auto; gap: 4px; padding: 3px; }
-.workspace-session-form input {
-  grid-column: 1 / -1;
-  min-width: 0;
-  min-height: var(--tool-size);
-  padding-inline: 7px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  font: inherit;
-}
 .card-tabs .card-open-select { max-width: 108px; }
 .workspace-error {
   position: absolute;
@@ -92,26 +77,11 @@ body {
   color: #862c3e;
   box-shadow: 0 4px 18px #29253720;
 }
-.app-pages .text-button[aria-current='page'] { background: var(--selected); color: var(--accent); }
+.app-pages > button[aria-current='page'] { background: var(--selected); color: var(--accent); }
 .app-layout-switch { grid-column: 2; justify-self: center; }
 
-.general-page { position: absolute; inset: 0; }
-.general-page[data-obscured] { visibility: hidden; opacity: 0; }
-
-.app-brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  font-weight: 680;
-  letter-spacing: -.025em;
-}
-
-.app-brand > :last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.editor-page { position: absolute; inset: 0; }
+.editor-page[data-obscured] { visibility: hidden; opacity: 0; }
 
 .brand-mark {
   display: grid;
@@ -366,6 +336,10 @@ body {
   transform: translateY(-50%);
 }
 
+.workspace-edge svg { pointer-events: none; }
+
+.workspace-edge svg { pointer-events: none; }
+
 .workspace-edge:hover {
   color: var(--accent);
   background: var(--selected);
@@ -465,8 +439,7 @@ body {
 }
 
 @media (max-width: 940px) {
-  .app-header { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .app-brand > :last-child { display: none; }
+  .app-header { grid-template-columns: minmax(0, 1fr) auto auto; }
 }
 
 @media (max-width: 570px) {
