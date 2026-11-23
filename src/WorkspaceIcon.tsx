@@ -17,6 +17,9 @@ const paths = {
   link: 'M8 12l4-4 M7 13l-1 1a3 3 0 0 1-4-4l3-3a3 3 0 0 1 4 0 M13 7l1-1a3 3 0 0 1 4 4l-3 3a3 3 0 0 1-4 0',
   library: 'M3 4h3v12H3z M9 4h3v12H9z M14 5l2-.5 3 11-2 .5z',
   search: 'M13 13l4 4 M14 9a5 5 0 1 1-10 0 5 5 0 0 1 10 0',
+  folder: 'M2.5 5h6l2 2h7v9h-15z',
+  rename: 'm4 13-1 4 4-1L16 7l-3-3z M11 6l3 3',
+  trash: 'M3 6h14 M7 6V3h6v3 M5 6l1 11h8l1-11 M8 9v5 M12 9v5',
 } as const
 
 export default function WorkspaceIcon({ name }: { name: keyof typeof paths }) {

@@ -22,10 +22,11 @@ type CardWorkspaceProps = {
   onOpenPdfSource: (region: PdfRegion) => void
   onReferencesChange: (references: PdfRegionReference[]) => void
   onReferenceStatusChange: (hasUnknownReferences: boolean) => void
+  onCardsChange: (cards: Card[]) => void
 }
 
 export default function CardWorkspace({
-  ref, onStartPdfRegion, onActiveCardChange, onOpenPdfSource, onReferencesChange, onReferenceStatusChange,
+  ref, onStartPdfRegion, onActiveCardChange, onOpenPdfSource, onReferencesChange, onReferenceStatusChange, onCardsChange,
 }: CardWorkspaceProps) {
   const [cards, setCards] = useState(loadCards)
   const activeCard = cards.items.find((card) => card.id === cards.activeId)!
@@ -33,6 +34,7 @@ export default function CardWorkspace({
   const pendingRegions = useRef(new Map<string, PdfRegion[]>())
   const { watchReferences, hasUnknownReferences } = useCardPdfReferences(cards.items, onReferencesChange)
 
+  useEffect(() => onCardsChange(cards.items), [cards.items, onCardsChange])
   useEffect(() => onActiveCardChange(activeCard.id), [activeCard.id, onActiveCardChange])
   useEffect(() => onReferenceStatusChange(hasUnknownReferences), [hasUnknownReferences, onReferenceStatusChange])
 

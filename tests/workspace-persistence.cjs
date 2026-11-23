@@ -357,6 +357,133 @@ async function verifyNavigation(page, browser, origin) {
   console.log('Floating navigation passed hover, pin, Escape, search, linked grouping, tab reuse, touch and narrow viewport checks.')
 }
 
+const libraryPage = (page) => page.getByRole('main', { name: 'Library', exact: true })
+
+async function openLibrary(page) {
+  await page.getByRole('button', { name: 'Library', exact: true }).click()
+  await expect(libraryPage(page)).toBeVisible()
+  return libraryPage(page)
+}
+
+async function openGeneral(page) {
+  await page.getByRole('button', { name: 'General', exact: true }).click()
+  await expect(libraryPage(page)).toBeHidden()
+}
+
+async function saveFolderName(library, name) {
+  await library.getByRole('textbox', { name: '文件夹名称' }).fill(name)
+  await library.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(library.getByRole('textbox', { name: '文件夹名称' })).toBeHidden()
+}
+
+async function verifyLibrary(page) {
+  await waitEditor(page)
+  await page.evaluate(() => {
+    window.libraryStore = window.tlsync.store
+    window.libraryPdfPage = document.querySelector('.pdfViewer .page')
+  })
+  const library = await openLibrary(page)
+  expect(await page.evaluate(() => window.libraryStore === window.tlsync.store &&
+    window.libraryPdfPage !== null && document.querySelector('.pdfViewer .page') === window.libraryPdfPage)).toBe(true)
+  const rootTree = library.getByRole('region', { name: 'PDF 文件树' }).locator('.library-tree').first()
+  const create = library.getByRole('button', { name: '新建文件夹', exact: true })
+  const option = (name) => ({ label: name })
+  const movePdf = (name) => library.getByRole('combobox', { name: '移动 PDF ' + name, exact: true })
+  const moveFolder = (name) => library.getByRole('combobox', { name: '移动文件夹 ' + name, exact: true })
+
+  await expect(rootTree.locator(':scope > li.library-document')).toHaveCount(2)
+  for (const name of ['Research', 'Archive', 'Disposable']) {
+    await create.click()
+    await saveFolderName(library, name)
+  }
+  await library.getByRole('button', { name: '新建子文件夹 Research', exact: true }).click()
+  await saveFolderName(library, 'Sources')
+  await library.getByRole('button', { name: '重命名 Sources', exact: true }).click()
+  await saveFolderName(library, 'Papers')
+  await expect(moveFolder('Research').getByRole('option', { name: 'Research / Papers', exact: true })).toHaveCount(0)
+  await moveFolder('Papers').selectOption(option('Archive'))
+  await expect(moveFolder('Archive').getByRole('option', { name: 'Archive / Papers', exact: true })).toHaveCount(0)
+  await moveFolder('Papers').selectOption(option('Research'))
+  await expect(movePdf('Alpha.pdf').getByRole('option', { name: 'Research / Papers', exact: true })).toHaveCount(1)
+  await movePdf('Alpha.pdf').selectOption(option('Research / Papers'))
+  await library.getByRole('button', { name: '新建子文件夹 Disposable', exact: true }).click()
+  await saveFolderName(library, 'Retained')
+  await movePdf('Beta.pdf').selectOption(option('Disposable'))
+  page.once('dialog', dialog => dialog.accept())
+  await library.getByRole('button', { name: '删除文件夹 Disposable', exact: true }).click()
+  await expect(rootTree.locator(':scope > li.library-document').getByRole('button', { name: 'Beta.pdf', exact: true })).toBeVisible()
+  await expect(rootTree.locator(':scope > li.library-folder').getByRole('button', { name: 'Retained', exact: true })).toBeVisible()
+  await expect(movePdf('Beta.pdf')).toHaveValue('')
+  await movePdf('Beta.pdf').selectOption(option('Archive'))
+
+  await library.getByRole('button', { name: 'All Cards', exact: true }).click()
+  const results = library.getByRole('region', { name: 'All Cards', exact: true })
+  const filter = library.getByRole('combobox', { name: '按 PDF 文件夹筛选 Card' })
+  await filter.selectOption(option('Research'))
+  await expect(results.locator('.library-document')).toHaveCount(2)
+  await filter.selectOption(option('Archive'))
+  await expect(results.locator('.library-document')).toHaveCount(1)
+  const card = results.locator('.library-document')
+  await expect(card.getByRole('button', { name: 'Card 1', exact: true })).toBeVisible()
+  await expect(card.locator('.library-count')).toHaveText('2', timeout)
+  await card.locator('summary').click()
+  await expect(card.getByRole('button', { name: 'Alpha.pdf', exact: true })).toBeVisible()
+  await card.getByRole('button', { name: 'Beta.pdf', exact: true }).click()
+  await expect(pdfButton(page, 'Beta')).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: '新建 Card', exact: true }).click()
+  await expect(cardButton(page, 3)).toHaveAttribute('aria-pressed', 'true')
+  await waitEditor(page)
+  await openLibrary(page)
+  await library.getByRole('button', { name: 'All Cards', exact: true }).click()
+  await library.getByRole('searchbox', { name: '搜索 Card' }).fill('card 3')
+  await expect(results.locator('.library-document')).toHaveCount(1)
+  await expect(results.locator('.library-count')).toHaveText('0', timeout)
+  await library.getByRole('button', { name: 'PDF', exact: true }).click()
+  await library.getByRole('searchbox', { name: '搜索 Library PDF' }).fill('ALPHA')
+  const pdf = library.locator('.library-document')
+  await expect(pdf).toHaveCount(1)
+  await expect(pdf.getByText('Research / Papers', { exact: true }).first()).toBeVisible()
+  await pdf.locator('summary').click()
+  await pdf.getByRole('button', { name: 'Card 1', exact: true }).click()
+  await expect(cardButton(page, 1)).toHaveAttribute('aria-pressed', 'true')
+  await waitEditor(page, (await cardState(page)).items[0].persistenceKey)
+  await page.reload()
+  await openLibrary(page)
+  await expect(movePdf('Alpha.pdf').locator('option:checked')).toHaveText('Research / Papers')
+  await expect(movePdf('Beta.pdf').locator('option:checked')).toHaveText('Archive')
+  await openGeneral(page)
+  await waitEditor(page)
+  console.log('Library nested folders, moving, safe deletion, virtual Card filters, independent Cards and document opening passed.')
+}
+
+function storedLibrary(page) {
+  return page.evaluate(() => {
+    const dataset = localStorage.getItem('cardinal-notes:active-dataset')
+    const key = dataset ? 'cardinal-notes:restore:' + dataset + ':library' : 'cardinal-notes:library'
+    return JSON.parse(localStorage.getItem(key))
+  })
+}
+
+async function writeInvalidLibraryBackup(input, output, change) {
+  const { BlobReader, BlobWriter, TextReader, ZipReader, ZipWriter } = await import('@zip.js/zip.js')
+  const reader = new ZipReader(new BlobReader(new Blob([fs.readFileSync(input)])))
+  const writer = new ZipWriter(new BlobWriter(), { level: 0, useWebWorkers: false })
+  try {
+    for (const entry of await reader.getEntries()) {
+      const blob = await entry.getData(new BlobWriter(), { useWebWorkers: false })
+      if (entry.filename === 'backup.json') {
+        const manifest = JSON.parse(await blob.text())
+        expect(manifest.version).toBe(2)
+        change(manifest.library)
+        await writer.add(entry.filename, new TextReader(JSON.stringify(manifest)))
+      } else await writer.add(entry.filename, new BlobReader(blob))
+    }
+    fs.writeFileSync(output, Buffer.from(await (await writer.close()).arrayBuffer()))
+  } finally {
+    await reader.close()
+  }
+}
+
 async function run() {
   if (verifyLegacy) buildOld()
   let dist = verifyLegacy ? oldDist : newDist
@@ -451,6 +578,13 @@ async function run() {
     await expect(cardsPanel(page).getByText('等待确认关联…')).toBeVisible()
     await expect(cardsPanel(page).getByText('暂无关联 Card')).toHaveCount(0)
     await cardsHandle(page).press('Escape')
+    const uncertain = await openLibrary(page)
+    await expect(uncertain.getByRole('status').filter({ hasText: '关联结果可能不完整' })).toBeVisible()
+    const beta = uncertain.locator('.library-document').filter({ has: page.getByRole('button', { name: 'Beta.pdf', exact: true }) })
+    await beta.locator('summary').click()
+    await expect(beta.getByText('关联尚未确认。', { exact: true })).toBeVisible()
+    await expect(beta.getByText('暂无关联 Card。', { exact: true })).toHaveCount(0)
+    await openGeneral(page)
     await selectPdf(page, 'Alpha')
     await page.evaluate(() => sessionStorage.removeItem('test-failed-shape-read'))
     await expect(marker(page)).toHaveCount(2, timeout)
@@ -509,11 +643,13 @@ async function run() {
     await expect(marker(restored)).toHaveCount(1, timeout)
     await expectImage(restored)
     expect(await restored.evaluate(() => window.tlsync.store.get('shape:photo').x)).toBe(390)
+    await verifyLibrary(restored)
+    const savedLibrary = await storedLibrary(restored)
     await restored.getByRole('button', { name: '仅 PDF', exact: true }).click()
     await expect(restored.locator('#card-pane')).toBeHidden()
     await download(restored, newZip)
     await expect(restored.locator('.split-workspace')).toHaveAttribute('data-mode', 'pdf')
-    console.log('Existing v1 ZIP restored into a blank context; IDs, both PDF links, image bytes and reload were verified.')
+    console.log('Backup without folders restored into a blank context; IDs, PDF links, image bytes and reload were verified.')
 
     const clean = await browser.newContext({ viewport: { width: 1480, height: 950 } })
     const imported = await clean.newPage()
@@ -527,6 +663,28 @@ async function run() {
       zoom: window.tlsync.store.allRecords().find(record => record.typeName === 'camera').z,
     }))).toEqual({ imageX: 390, zoom: 0.95 })
     const pointer = await imported.evaluate(() => localStorage.getItem('cardinal-notes:active-dataset'))
+    const library = await openLibrary(imported)
+    await expect(library.getByRole('combobox', { name: '移动 PDF Alpha.pdf' }).locator('option:checked')).toHaveText('Research / Papers')
+    await expect(library.getByRole('combobox', { name: '移动 PDF Beta.pdf' }).locator('option:checked')).toHaveText('Archive')
+    await expect(library.getByRole('button', { name: 'Retained', exact: true })).toBeVisible()
+    await openGeneral(imported)
+    expect(await storedLibrary(imported)).toEqual(savedLibrary)
+    const cycleZip = path.join(scratch, 'cycle.zip')
+    await writeInvalidLibraryBackup(newZip, cycleZip, (data) => {
+      data.folders[0].parentId = data.folders[0].id
+    })
+    await imported.getByLabel('选择 ZIP 备份').setInputFiles(cycleZip)
+    await expect(imported.getByRole('alert')).toContainText('循环嵌套', timeout)
+    expect(await imported.evaluate(() => localStorage.getItem('cardinal-notes:active-dataset'))).toBe(pointer)
+    const orphanZip = path.join(scratch, 'orphan.zip')
+    await writeInvalidLibraryBackup(newZip, orphanZip, (data) => {
+      data.placements[0].pdfId = '00000000-0000-0000-0000-000000000000'
+    })
+    await imported.getByLabel('选择 ZIP 备份').setInputFiles(orphanZip)
+    await expect(imported.getByRole('alert')).toContainText('无效的文件夹或 PDF 位置', timeout)
+    expect(await imported.evaluate(() => localStorage.getItem('cardinal-notes:active-dataset'))).toBe(pointer)
+    await expectImage(imported)
+    console.log('ZIP v2 restored folder IDs and placements. Malformed folder hierarchy was rejected before staging.')
     await imported.evaluate(() => {
       const set = Storage.prototype.setItem
       Storage.prototype.setItem = function (key, value) {

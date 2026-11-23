@@ -7,8 +7,10 @@ import { openPdf, pdfHash } from '../pdf/pdfDocument'
 import { listPdfs, readActivePdfId, readPdf, removeStagedPdfs, writeRestoredPdfs, type PdfFile } from '../pdf/pdfStorage'
 import { matchesLiveCanvas, readCanvas, removeStagedCanvas, writeCanvas, type CanvasData, type LiveCanvas } from '../cards/canvasPersistence'
 
+import { EMPTY_LIBRARY, LIBRARY_KEY, libraryKey, readLibrary, validateLibrary, type LibraryData } from '../library/libraryStorage'
+
 const FORMAT = 'cardinal-notes-backup'
-const VERSION = 1
+const VERSION = 2
 const TLDRAW_VERSION = '5.6.2'
 const LIMIT = 512 * 1024 * 1024
 const JSON_LIMIT = 32 * 1024 * 1024
@@ -24,6 +26,7 @@ type Manifest = {
   activePdfId: string | null
   cards: { id: string; title: string; canvas: boolean }[]
   pdfs: PdfFile[]
+  library: LibraryData
 }
 
 type AssetEntry = { id: string; type: string; name: string; lastModified: number }
@@ -45,7 +48,7 @@ function check(condition: unknown, message: string): asserts condition {
 function checkManifest(value: unknown): Manifest {
   const manifest = value as Manifest | null
   check(manifest?.format === FORMAT, '这不是 Cardinal Notes 备份。')
-  check(manifest.version === VERSION && manifest.tldrawVersion === TLDRAW_VERSION, '备份格式版本不兼容。')
+  check((manifest.version === 1 || manifest.version === VERSION) && manifest.tldrawVersion === TLDRAW_VERSION, '备份格式版本不兼容。')
   check(Array.isArray(manifest.cards) && manifest.cards.length > 0 && Array.isArray(manifest.pdfs), '备份缺少 Card 或 PDF 清单。')
 
   const cards = new Set<string>()
@@ -66,7 +69,8 @@ function checkManifest(value: unknown): Manifest {
     hashes.add(file.hash)
   }
   check(manifest.activePdfId === null || pdfIds.has(manifest.activePdfId), '当前 PDF 不在备份清单中。')
-  return manifest
+  const library = manifest.version === 1 ? EMPTY_LIBRARY : validateLibrary(manifest.library, pdfIds)
+  return { ...manifest, library }
 }
 
 async function verifyPdf(file: PdfFile, blob: Blob) {
@@ -179,6 +183,7 @@ export async function exportWorkspace(live: LiveCanvas) {
   const state = loadCards()
   const pdfs = await listPdfs()
   const chosenPdf = readActivePdfId()
+  const library = await navigator.locks.request(LIBRARY_KEY, readLibrary)
   const manifest: Manifest = {
     format: FORMAT,
     version: VERSION,
@@ -187,6 +192,7 @@ export async function exportWorkspace(live: LiveCanvas) {
     activePdfId: pdfs.some(({ id }) => id === chosenPdf) ? chosenPdf : null,
     cards: state.items.map(({ id, title }) => ({ id, title, canvas: false })),
     pdfs,
+    library,
   }
   const writer = new ZipWriter(new BlobWriter('application/zip'), { level: 0, useWebWorkers: false })
   let total = 0
@@ -262,7 +268,7 @@ export async function readBackup(file: Blob): Promise<ValidatedBackup> {
     const entries = new Map<string, FileEntry>()
     let total = 0
     for (const entry of files) {
-      // The v1 writer uses stored entries. Validate sizes before reading any payload.
+      // The backup writer uses stored ZIP entries. Validate sizes before reading any payload.
       check(!entry.directory && !entries.has(entry.filename) && !entry.encrypted &&
         entry.compressionMethod === 0 && entry.uncompressedSize === entry.compressedSize &&
         Number.isSafeInteger(entry.uncompressedSize) && entry.uncompressedSize >= 0, '备份包含重复或不支持的 ZIP 条目。')
@@ -332,6 +338,7 @@ export async function restoreWorkspace({ manifest, canvases, pdfs }: ValidatedBa
   const dataset = crypto.randomUUID()
   const cardsKey = datasetKey('cards', dataset)
   const pdfKey = datasetKey('active-pdf', dataset)
+  const foldersKey = libraryKey(dataset)
   const cards: CardListState = {
     items: manifest.cards.map(({ id, title }) => ({ id, title, persistenceKey: datasetKey(`card:${id}`, dataset) })),
     activeId: manifest.activeCardId,
@@ -348,11 +355,13 @@ export async function restoreWorkspace({ manifest, canvases, pdfs }: ValidatedBa
     await writeRestoredPdfs(dataset, pdfs)
     localStorage.setItem(cardsKey, JSON.stringify(cards))
     if (manifest.activePdfId) localStorage.setItem(pdfKey, manifest.activePdfId)
+    localStorage.setItem(foldersKey, JSON.stringify(manifest.library))
     // A single atomic pointer write activates both Card and PDF data on the next load.
     localStorage.setItem(ACTIVE_DATASET_KEY, dataset)
   } catch (error) {
     localStorage.removeItem(cardsKey)
     localStorage.removeItem(pdfKey)
+    localStorage.removeItem(foldersKey)
     await Promise.all([...created.map(removeStagedCanvas), removeStagedPdfs(dataset)])
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       throw new Error('浏览器存储空间不足，恢复未切换，当前数据仍可使用。')
