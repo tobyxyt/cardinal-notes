@@ -11,7 +11,7 @@ final class CardinalBridgeViewController: CAPBridgeViewController {
 final class PencilKitTestPlugin: CAPPlugin, CAPBridgedPlugin {
     let identifier = "PencilKitTestPlugin"
     let jsName = "PencilKitTest"
-    let pluginMethods = [CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)]
+    let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)]
 
     @objc func open(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
