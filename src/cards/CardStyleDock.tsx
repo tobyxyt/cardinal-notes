@@ -1,31 +1,18 @@
 import type { ReactNode } from 'react'
 import {
-  ArrowShapeArrowheadEndStyle, ArrowShapeArrowheadStartStyle, ArrowShapeKindStyle, DefaultColorStyle,
-  DefaultDashStyle, DefaultFillStyle, DefaultFontStyle, DefaultSizeStyle, DefaultStylePanel,
-  DefaultHorizontalAlignStyle, DefaultTextAlignStyle, DefaultVerticalAlignStyle, GeoShapeGeoStyle, LineShapeSplineStyle,
-  kickoutOccludedShapes, StylePanelArrowheadPicker, StylePanelGeoShapePicker, StylePanelLabelAlignPicker,
-  StylePanelSection, TldrawUiButtonIcon, TldrawUiPopover, TldrawUiPopoverContent, TldrawUiPopoverTrigger,
-  useEditor, useReadonly, useRelevantStyles, useValue, type EnumStyleProp, type ReadonlySharedStyleMap,
+  DefaultColorStyle, DefaultSizeStyle, DefaultStylePanel, DefaultStylePanelContent, ReadonlySharedStyleMap,
+  kickoutOccludedShapes, TldrawUiButtonIcon, TldrawUiPopover, TldrawUiPopoverContent, TldrawUiPopoverTrigger,
+  useEditor, useReadonly, useRelevantStyles, useValue, type EnumStyleProp,
 } from 'tldraw'
 import CardColorPalette from './CardColorPalette'
 import { useCardPopupAlignment } from './useCardPopupAlignment'
 
 const noSelectionDefaults = [] as const
 const sizeLabels = { s: '最细', m: '较细', l: '较粗', xl: '最粗' }
-const fontLabels = { draw: '手写', sans: '无衬线', serif: '衬线', mono: '等宽' }
-const dashLabels = { draw: '手绘线', solid: '实线', dashed: '虚线', dotted: '点线', none: '无描边' }
-const fillLabels = { none: '无填充', semi: '背景色', solid: '纯色', pattern: '网纹', fill: '实色填充', 'lined-fill': '条纹填充' }
-const textAlignLabels = { start: '左对齐', middle: '居中', end: '右对齐' }
-const opacityKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End']
-
-function LinePreview({ weight = 2, dash = 'solid' }: { weight?: number; dash?: keyof typeof dashLabels }) {
+function LinePreview({ weight }: { weight: number }) {
   return (
-    <svg className="card-line-preview" viewBox="0 0 24 20" fill="none" aria-hidden="true">
-      {dash === 'none' ? <path d="m8 6 8 8M16 6l-8 8" stroke="currentColor" strokeWidth="1.4" /> : (
-        <path d={dash === 'draw' ? 'M2 11q3-4 7-1t5 0 8-1' : 'M2 10h20'}
-          stroke="currentColor" strokeWidth={weight} strokeLinecap="round"
-          strokeDasharray={dash === 'dashed' ? '4 3' : dash === 'dotted' ? '0.1 3.8' : undefined} />
-      )}
+    <svg className="card-line-preview" viewBox="0 0 24 20" aria-hidden="true">
+      <path d="M2 10h20" stroke="currentColor" strokeWidth={weight} strokeLinecap="round" />
     </svg>
   )
 }
@@ -63,33 +50,6 @@ function InlineStyle<T extends string>({ style, styles, label, labels, preview }
   )
 }
 
-function OpacityControl() {
-  const editor = useEditor()
-  const opacity = useValue('Card opacity', () => editor.getSharedOpacity(), [editor])
-  const percentage = opacity.type === 'shared' ? Math.round(opacity.value * 100) : 100
-  return (
-    <label className="card-style-group card-opacity" title="不透明度">
-      <span aria-hidden="true" className="card-opacity-symbol" />
-      <input type="range" min="0" max="100" step="1" value={percentage} aria-label="不透明度"
-        aria-valuetext={opacity.type === 'mixed' ? '混合' : percentage + '%'}
-        onPointerDown={() => editor.markHistoryStoppingPoint('Card opacity')}
-        onKeyDown={(event) => {
-          if (!opacityKeys.includes(event.key)) return
-          event.stopPropagation()
-          if (!event.repeat) editor.markHistoryStoppingPoint('Card opacity')
-        }}
-        onChange={(event) => {
-          const value = event.currentTarget.valueAsNumber / 100
-          editor.run(() => {
-            if (editor.isIn('select')) editor.setOpacityForSelectedShapes(value)
-            else editor.setOpacityForNextShapes(value)
-          })
-        }} />
-      <output aria-hidden="true">{opacity.type === 'mixed' ? '—' : percentage + '%'}</output>
-    </label>
-  )
-}
-
 export default function CardStyleDock() {
   const editor = useEditor()
   const readonly = useReadonly()
@@ -104,8 +64,9 @@ export default function CardStyleDock() {
   }, [editor])
   if (readonly || !styles || selectionLocked) return null
 
-  const needsGeometryOptions = styles.get(GeoShapeGeoStyle) || styles.get(ArrowShapeArrowheadStartStyle) ||
-    styles.get(ArrowShapeArrowheadEndStyle) || styles.get(DefaultHorizontalAlignStyle) || styles.get(DefaultVerticalAlignStyle)
+  const advancedStyles = new ReadonlySharedStyleMap(
+    [...styles].filter(([style]) => style !== DefaultColorStyle && style !== DefaultSizeStyle),
+  )
 
   return (
     <div className="card-style-dock" role="group" aria-label="Card 样式">
@@ -129,23 +90,9 @@ export default function CardStyleDock() {
         </TldrawUiPopoverTrigger>
         <TldrawUiPopoverContent side="top" align="end" alignOffset={alignOffset} collisionPadding={8}>
           <div className="card-more-styles" role="group" aria-label="更多样式">
-            <InlineStyle style={DefaultDashStyle} styles={styles} label="线型" labels={dashLabels} preview={(dash) => <LinePreview dash={dash} />} />
-            <InlineStyle style={DefaultFontStyle} styles={styles} label="字体" labels={fontLabels}
-              preview={(font) => <TldrawUiButtonIcon icon={'font-' + font} />} />
-            <InlineStyle style={DefaultFillStyle} styles={styles} label="填充" labels={fillLabels}
-              preview={(fill) => <TldrawUiButtonIcon icon={'fill-' + fill} />} />
-            <InlineStyle style={DefaultTextAlignStyle} styles={styles} label="文字对齐" labels={textAlignLabels}
-              preview={(align) => <TldrawUiButtonIcon icon={{ start: 'text-align-left', middle: 'text-align-center', end: 'text-align-right' }[align]} />} />
-            <InlineStyle style={ArrowShapeKindStyle} styles={styles} label="箭头路径" labels={{ arc: '曲线', elbow: '折线' }}
-              preview={(kind) => <TldrawUiButtonIcon icon={'arrow-' + kind} />} />
-            <InlineStyle style={LineShapeSplineStyle} styles={styles} label="路径" labels={{ line: '直线', cubic: '曲线' }}
-              preview={(kind) => <TldrawUiButtonIcon icon={kind === 'line' ? 'spline-line' : 'spline-cubic'} />} />
-            <OpacityControl />
-            {needsGeometryOptions && (
-              <DefaultStylePanel styles={styles} isMobile>
-                <StylePanelSection><StylePanelLabelAlignPicker /><StylePanelGeoShapePicker /><StylePanelArrowheadPicker /></StylePanelSection>
-              </DefaultStylePanel>
-            )}
+            <DefaultStylePanel styles={advancedStyles} isMobile>
+              <DefaultStylePanelContent />
+            </DefaultStylePanel>
           </div>
         </TldrawUiPopoverContent>
       </TldrawUiPopover>

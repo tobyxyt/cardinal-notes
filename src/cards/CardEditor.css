@@ -125,53 +125,20 @@
 }
 .card-color-favorite-toggle[aria-pressed='true'] { color: var(--accent); }
 
-.card-opacity { height: var(--card-style-target); padding: 0 5px; gap: 4px; flex-wrap: nowrap; }
-.card-opacity input { min-width: 38px; width: 66px; height: var(--card-style-target); margin: 0; accent-color: var(--focus); }
-.card-opacity output { width: 30px; color: var(--muted); font-size: 10px; text-align: end; font-variant-numeric: tabular-nums; }
-.card-opacity-symbol {
-  width: 12px;
-  height: 12px;
-  border: 1px solid var(--muted);
-  border-radius: 50%;
-  background: linear-gradient(to right, var(--muted) 50%, transparent 50%);
+.card-more-grid {
+  box-sizing: border-box;
+  width: min(168px, calc(100cqi - 16px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  touch-action: none;
+}
+@container (max-width: 180px) {
+  .card-more-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-.card-more-tools {
-  min-width: 0;
-  max-width: var(--radix-dropdown-menu-content-available-width);
-  max-height: min(50dvh, var(--radix-dropdown-menu-content-available-height));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.card-more-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 2px;
-  box-sizing: border-box;
-  width: min(192px, calc(100cqi - 24px));
-  padding: 4px;
-}
-.card-more-grid .card-extra-tool { width: 100%; height: auto; min-height: 36px; display: grid; justify-items: center; gap: 2px; padding: 4px; }
-.card-extra-tool[data-isactive='true'], .card-extra-tool[data-highlighted] { background: var(--selected); color: var(--accent); }
-.card-extra-tool-label { display: none; }
 @media (pointer: coarse) {
   .card-style-dock { --card-style-target: 36px; }
   .card-color-favorite-toggle { min-height: 32px; }
-  .card-more-grid .card-extra-tool { min-height: 48px; }
-  .card-extra-tool-label { display: block; max-width: 100%; font-size: 9px; line-height: 1.1; text-align: center; white-space: normal; }
 }
 
-.card-more-styles {
-  box-sizing: border-box;
-  width: min(248px, calc(100cqi - 16px));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 6px;
-  color: var(--ink);
-  background: var(--surface);
-  --card-style-target: 30px;
-}
+.card-more-styles { padding: 4px; }
 .card-more-style-button { background: var(--chrome); }
-@media (pointer: coarse) { .card-more-styles { --card-style-target: 36px; } }

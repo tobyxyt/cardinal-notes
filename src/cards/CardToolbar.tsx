@@ -1,15 +1,20 @@
 import { useRef } from 'react'
 import {
-  GeoShapeGeoStyle, TldrawUiButton, TldrawUiButtonIcon, TldrawUiDropdownMenuContent, TldrawUiDropdownMenuItem, TldrawUiDropdownMenuRoot,
-  TldrawUiDropdownMenuTrigger, TldrawUiMenuActionItem, TldrawUiMenuContextProvider, TldrawUiMenuGroup,
-  TldrawUiToolbar, TldrawUiToolbarButton, ToggleToolLockItem, ToolbarItem, unwrapLabel, useEditor,
-  usePassThroughWheelEvents, useReadonly, useTools, useTranslation, useValue,
+  GeoShapeGeoStyle, TldrawUiButtonIcon, TldrawUiMenuActionItem, TldrawUiMenuContextProvider,
+  TldrawUiPopover, TldrawUiPopoverContent, TldrawUiPopoverTrigger, TldrawUiToolbar, TldrawUiToolbarButton,
+  ToggleToolLockedButton, ToolbarItem, tlmenus, unwrapLabel, useEditor, usePassThroughWheelEvents,
+  useReadonly, useTools, useTranslation, useValue,
 } from 'tldraw'
 import CardStyleDock from './CardStyleDock'
 import { useCardPopupAlignment } from './useCardPopupAlignment'
 
 const primaryTools = ['select', 'hand', 'draw', 'eraser', 'text', 'highlight', 'rectangle', 'ellipse', 'arrow']
-const secondaryTools = ['line', 'note', 'asset', 'frame']
+// Match the SDK toolbar order for stock items, with additional registered tools at the end.
+const overflowOrder = [
+  'note', 'asset', 'triangle', 'diamond', 'hexagon', 'oval', 'rhombus', 'star', 'cloud',
+  'heart', 'x-box', 'check-box', 'arrow-left', 'arrow-up', 'arrow-down', 'arrow-right', 'line', 'laser', 'frame',
+]
+const overflowId = 'card-more-tools'
 
 function MoreTools() {
   const editor = useEditor()
@@ -23,41 +28,30 @@ function MoreTools() {
   }, [editor])
   const items = Object.values(tools).filter(({ id, readonlyOk }) =>
     !primaryTools.includes(id) && (!readonly || readonlyOk))
-  const ordered = [...items.filter(({ id }) => secondaryTools.includes(id)), ...items.filter(({ id }) => !secondaryTools.includes(id))]
+  const included = new Set(items.map(({ id }) => id))
+  const ordered = [...overflowOrder.filter((id) => included.has(id)),
+    ...items.filter(({ id }) => !overflowOrder.includes(id)).map(({ id }) => id)]
   const active = items.find(({ id }) => id === activeId)
   const activeLabel = active && unwrapLabel(active.label, 'toolbar')
 
   return (
-    <TldrawUiDropdownMenuRoot id="card-more-tools">
-      <TldrawUiDropdownMenuTrigger>
+    <TldrawUiPopover id={overflowId}>
+      <TldrawUiPopoverTrigger>
         <TldrawUiToolbarButton type="icon" title={activeLabel ? '更多工具 · ' + msg(activeLabel) : '更多工具'}
           isActive={Boolean(active)} {...triggerEvents}>
-          <TldrawUiButtonIcon icon={active?.icon ?? 'dots-horizontal'} />
+          <TldrawUiButtonIcon icon={active?.icon ?? 'chevron-up'} />
         </TldrawUiToolbarButton>
-      </TldrawUiDropdownMenuTrigger>
-      <TldrawUiDropdownMenuContent className="card-more-tools" side="top" align="end" alignOffset={alignOffset}>
-        <div className="card-more-grid">
-          {ordered.map((tool) => {
-            const label = unwrapLabel(tool.label, 'toolbar')
-            const name = label ? msg(label) : tool.id
-            return (
-              <TldrawUiDropdownMenuItem key={tool.id}>
-                <TldrawUiButton type="icon" className="card-extra-tool" aria-label={name} tooltip={name}
-                  isActive={tool.id === activeId} data-testid={'toolbar.' + tool.id} onClick={() => tool.onSelect('toolbar')}>
-                  {tool.icon && <TldrawUiButtonIcon icon={tool.icon} />}
-                  <span className="card-extra-tool-label" aria-hidden="true">{name}</span>
-                </TldrawUiButton>
-              </TldrawUiDropdownMenuItem>
-            )
-          })}
-        </div>
-        {!readonly && (
-          <TldrawUiMenuContextProvider type="menu" sourceId="toolbar">
-            <TldrawUiMenuGroup id="tool-options"><ToggleToolLockItem /></TldrawUiMenuGroup>
+      </TldrawUiPopoverTrigger>
+      <TldrawUiPopoverContent side="top" align="end" alignOffset={alignOffset} collisionPadding={8}>
+        <TldrawUiToolbar orientation="grid" label="更多工具" className="card-more-grid"
+          onClick={() => tlmenus.deleteOpenMenu(overflowId, editor.contextId)}>
+          <TldrawUiMenuContextProvider type="toolbar-overflow" sourceId="toolbar">
+            {ordered.map((id) => <ToolbarItem key={id} tool={id} />)}
           </TldrawUiMenuContextProvider>
-        )}
-      </TldrawUiDropdownMenuContent>
-    </TldrawUiDropdownMenuRoot>
+        </TldrawUiToolbar>
+        {!readonly && <ToggleToolLockedButton activeToolId={activeId} />}
+      </TldrawUiPopoverContent>
+    </TldrawUiPopover>
   )
 }
 
